@@ -1,0 +1,148 @@
+import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit3 } from 'lucide-react';
+
+export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
+  const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
+  const currentPrice = stock.currentPrice || stock.purchasePrice;
+  const currentValue = shares * currentPrice;
+  const investedAmount = stock.investedAmount || (shares * stock.purchasePrice);
+  const gain = currentValue - investedAmount;
+  const gainPercent = (gain / investedAmount) * 100;
+  const isPositive = gain >= 0;
+
+  // Calculate projected value (5 year)
+  const projectedPrice = stock.forecast?.[stock.forecast.length - 1]?.price || currentPrice;
+  const projectedValue = shares * projectedPrice;
+  const projectedGain = projectedValue - investedAmount;
+  const projectedGainPercent = (projectedGain / investedAmount) * 100;
+
+  // Price change from avg cost
+  const priceChange = currentPrice - stock.purchasePrice;
+  const priceChangePercent = (priceChange / stock.purchasePrice) * 100;
+
+  return (
+    <div className="glass-card p-5 hover:border-emerald-glow/30 transition-all duration-300 group">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold text-emerald-bright">{stock.symbol}</span>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              isPositive ? 'bg-emerald-glow/20 text-emerald-bright' : 'bg-ruby/20 text-ruby-bright'
+            }`}>
+              {isPositive ? <TrendingUp className="w-3 h-3 inline mr-1" /> : <TrendingDown className="w-3 h-3 inline mr-1" />}
+              {isPositive ? '+' : ''}{gainPercent.toFixed(1)}%
+            </span>
+          </div>
+          <p className="text-sm text-steel mt-0.5 truncate max-w-[180px]">{stock.name}</p>
+        </div>
+        
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => onEdit(stock)}
+            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-amber-bright"
+            title="Edit Position"
+          >
+            <Edit3 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onViewChart(stock)}
+            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-sapphire-bright"
+            title="View Chart"
+          >
+            <BarChart3 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onRemove(stock.symbol)}
+            className="p-2 rounded-lg hover:bg-ruby/20 transition-colors text-steel hover:text-ruby-bright"
+            title="Remove"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Stats */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <p className="text-xs text-steel uppercase tracking-wide mb-1">Shares</p>
+          <p className="font-mono font-semibold text-pearl">
+            {shares.toFixed(shares < 1 ? 4 : 2)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-steel uppercase tracking-wide mb-1">Avg Cost</p>
+          <p className="font-mono text-silver">
+            ${stock.purchasePrice.toFixed(2)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-steel uppercase tracking-wide mb-1">Current Price</p>
+          <p className="font-mono text-pearl flex items-center gap-1">
+            ${currentPrice.toFixed(2)}
+            <span className={`text-xs ${priceChange >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+              ({priceChange >= 0 ? '+' : ''}{priceChangePercent.toFixed(1)}%)
+            </span>
+          </p>
+        </div>
+        <div>
+          <p className="text-xs text-steel uppercase tracking-wide mb-1">Market Value</p>
+          <p className={`font-mono font-semibold ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+            ${currentValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </p>
+        </div>
+      </div>
+
+      {/* P&L Section */}
+      <div className="p-3 rounded-lg bg-gradient-to-r from-slate-dark/50 to-obsidian/50 border border-slate-light/10 mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-steel uppercase tracking-wide mb-1">Unrealized P&L</p>
+            <div className="flex items-center gap-2">
+              <p className={`font-mono font-bold text-lg ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                {isPositive ? '+' : ''}${gain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </p>
+              <span className={`text-sm px-2 py-0.5 rounded ${
+                isPositive ? 'bg-emerald-glow/10 text-emerald-pale' : 'bg-ruby/10 text-ruby-bright'
+              }`}>
+                {isPositive ? '↑' : '↓'} {Math.abs(gainPercent).toFixed(2)}%
+              </span>
+            </div>
+          </div>
+          <div className={`p-2 rounded-lg ${isPositive ? 'bg-emerald-glow/20' : 'bg-ruby/20'}`}>
+            {isPositive ? (
+              <TrendingUp className="w-6 h-6 text-emerald-bright" />
+            ) : (
+              <TrendingDown className="w-6 h-6 text-ruby-bright" />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Cost Basis */}
+      <div className="flex items-center justify-between text-sm mb-4">
+        <span className="text-steel">Cost Basis</span>
+        <span className="font-mono text-silver">${investedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+      </div>
+
+      {/* Forecast Section */}
+      <div className="pt-4 border-t border-slate-light/30">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-steel uppercase tracking-wide mb-1">5Y Forecast</p>
+            <p className={`font-mono font-semibold ${projectedGain >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
+              ${projectedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-steel uppercase tracking-wide mb-1">Projected Return</p>
+            <p className={`font-mono text-sm ${projectedGain >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
+              {projectedGain >= 0 ? '+' : ''}{projectedGainPercent.toFixed(0)}%
+              <span className="text-steel ml-1">
+                (${(projectedGain >= 0 ? '+' : '') + projectedGain.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
