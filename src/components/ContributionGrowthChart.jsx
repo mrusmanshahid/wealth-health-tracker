@@ -10,7 +10,7 @@ import {
 } from 'recharts';
 import { format, addMonths } from 'date-fns';
 
-export default function ContributionGrowthChart({ stock, monthlyContribution }) {
+export default function ContributionGrowthChart({ stock, monthlyContribution, fullWidth = false }) {
   const chartData = useMemo(() => {
     if (!monthlyContribution || monthlyContribution <= 0 || !stock.history || stock.history.length < 12) {
       return null;
@@ -119,15 +119,17 @@ export default function ContributionGrowthChart({ stock, monthlyContribution }) 
   };
 
   return (
-    <div className="mt-4 pt-4 border-t border-slate-light/20">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-xs text-steel uppercase tracking-wide">
-          5Y Growth Projection (${monthlyContribution}/mo)
-        </p>
-      </div>
+    <div className={fullWidth ? '' : 'mt-4 pt-4 border-t border-slate-light/20'}>
+      {!fullWidth && (
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs text-steel uppercase tracking-wide">
+            5Y Growth Projection (${monthlyContribution}/mo)
+          </p>
+        </div>
+      )}
       
-      {/* Mini Chart */}
-      <div className="h-32 -mx-2">
+      {/* Chart */}
+      <div className={fullWidth ? 'h-64' : 'h-32 -mx-2'}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={chartData.data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
             <XAxis 

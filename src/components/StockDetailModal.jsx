@@ -1,14 +1,16 @@
-import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3 } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank } from 'lucide-react';
 import PortfolioChart from './PortfolioChart';
+import ContributionGrowthChart from './ContributionGrowthChart';
 import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
 
 export default function StockDetailModal({ stock, onClose }) {
   if (!stock) return null;
 
-  const shares = stock.investedAmount / stock.purchasePrice;
+  const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
   const currentValue = shares * (stock.currentPrice || stock.purchasePrice);
-  const gain = currentValue - stock.investedAmount;
-  const gainPercent = (gain / stock.investedAmount) * 100;
+  const investedAmount = stock.investedAmount || (shares * stock.purchasePrice);
+  const gain = currentValue - investedAmount;
+  const gainPercent = (gain / investedAmount) * 100;
   const isPositive = gain >= 0;
 
   // Calculate metrics
@@ -22,6 +24,23 @@ export default function StockDetailModal({ stock, onClose }) {
   const years = stock.history ? stock.history.length / 12 : 1;
   const cagr = calculateCAGR(firstPrice, lastPrice, years);
 
+  // Calculate growth rates for display
+  const history = stock.history || [];
+  const recent12 = history.slice(-12);
+  const recent60 = history.slice(-60);
+  
+  const recentGrowthRate = recent12.length >= 2 
+    ? (Math.pow(recent12[recent12.length - 1]?.price / recent12[0]?.price, 1 / (recent12.length / 12)) - 1) * 100
+    : 0;
+  
+  const fiveYearGrowthRate = recent60.length >= 12
+    ? (Math.pow(recent60[recent60.length - 1]?.price / recent60[0]?.price, 1 / (recent60.length / 12)) - 1) * 100
+    : recentGrowthRate;
+  
+  const tenYearGrowthRate = history.length >= 12
+    ? (Math.pow(history[history.length - 1]?.price / history[0]?.price, 1 / (history.length / 12)) - 1) * 100
+    : fiveYearGrowthRate;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div 
@@ -32,7 +51,7 @@ export default function StockDetailModal({ stock, onClose }) {
       <div className="relative glass-card w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-light/50 transition-colors z-10"
+          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-light/50 transition-colors z-10 bg-obsidian/50"
         >
           <X className="w-5 h-5 text-steel" />
         </button>
@@ -63,7 +82,7 @@ export default function StockDetailModal({ stock, onClose }) {
               <DollarSign className="inline w-3 h-3" /> Invested
             </p>
             <p className="font-mono font-semibold text-pearl">
-              ${stock.investedAmount.toLocaleString()}
+              ${investedAmount.toLocaleString()}
             </p>
           </div>
           
@@ -94,7 +113,7 @@ export default function StockDetailModal({ stock, onClose }) {
         {/* Performance Metrics */}
         <div className="glass-card p-4 mb-6 bg-slate-dark/30">
           <h3 className="text-sm font-semibold text-silver mb-3 uppercase tracking-wide">Performance Metrics</h3>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-4 mb-4">
             <div>
               <p className="text-xs text-steel mb-1">CAGR (10Y)</p>
               <p className={`font-mono text-lg ${cagr >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
@@ -114,13 +133,59 @@ export default function StockDetailModal({ stock, onClose }) {
               </p>
             </div>
           </div>
+          
+          {/* Growth Rate Comparison */}
+          <div className="pt-4 border-t border-slate-light/20">
+            <h4 className="text-xs text-steel mb-3 uppercase tracking-wide">Annual Growth Rates</h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center p-3 rounded-lg bg-emerald-glow/10">
+                <p className="text-xs text-steel mb-1">Recent (1Y)</p>
+                <p className={`font-mono text-lg ${recentGrowthRate >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                  {recentGrowthRate >= 0 ? '+' : ''}{recentGrowthRate.toFixed(1)}%
+                </p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-sapphire/10">
+                <p className="text-xs text-steel mb-1">5Y Average</p>
+                <p className={`font-mono text-lg ${fiveYearGrowthRate >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
+                  {fiveYearGrowthRate >= 0 ? '+' : ''}{fiveYearGrowthRate.toFixed(1)}%
+                </p>
+              </div>
+              <div className="text-center p-3 rounded-lg bg-violet/10">
+                <p className="text-xs text-steel mb-1">10Y Average</p>
+                <p className={`font-mono text-lg ${tenYearGrowthRate >= 0 ? 'text-violet-bright' : 'text-ruby-bright'}`}>
+                  {tenYearGrowthRate >= 0 ? '+' : ''}{tenYearGrowthRate.toFixed(1)}%
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Chart */}
-        <PortfolioChart stock={stock} showForecast={true} />
+        {/* Historical Chart */}
+        <div className="mb-6">
+          <PortfolioChart stock={stock} showForecast={true} />
+        </div>
+
+        {/* Monthly Contribution Growth Chart */}
+        {stock.monthlyContribution > 0 && (
+          <div className="glass-card p-4 mb-6 bg-slate-dark/30">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <PiggyBank className="w-5 h-5 text-amber-bright" />
+                <h3 className="text-sm font-semibold text-silver uppercase tracking-wide">
+                  Monthly Contribution Growth (${stock.monthlyContribution}/mo)
+                </h3>
+              </div>
+            </div>
+            <ContributionGrowthChart 
+              stock={stock} 
+              monthlyContribution={stock.monthlyContribution}
+              fullWidth={true}
+            />
+          </div>
+        )}
 
         {/* Purchase Info */}
-        <div className="mt-6 pt-4 border-t border-slate-light/30 flex items-center gap-4 text-sm text-steel">
+        <div className="pt-4 border-t border-slate-light/30 flex flex-wrap items-center gap-4 text-sm text-steel">
           <div className="flex items-center gap-2">
             <Calendar className="w-4 h-4" />
             Purchased: {stock.purchaseDate || 'Not specified'}
@@ -128,9 +193,14 @@ export default function StockDetailModal({ stock, onClose }) {
           <div>
             @ ${stock.purchasePrice.toFixed(2)}/share
           </div>
+          {stock.monthlyContribution > 0 && (
+            <div className="flex items-center gap-2">
+              <PiggyBank className="w-4 h-4" />
+              ${stock.monthlyContribution}/mo contribution
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 }
-

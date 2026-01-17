@@ -62,10 +62,10 @@ export default function EditStockModal({ stock, onClose, onSave }) {
         onClick={onClose}
       />
       
-      <div className="relative glass-card w-full max-w-lg p-6">
+      <div className="relative glass-card w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-light/50 transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-light/50 transition-colors z-10 bg-obsidian/50"
         >
           <X className="w-5 h-5 text-steel" />
         </button>
