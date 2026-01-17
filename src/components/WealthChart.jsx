@@ -15,16 +15,16 @@ import { format, addMonths } from 'date-fns';
 export default function WealthChart({ wealthData, monthlyContribution, stocks }) {
   // Calculate growth rates from historical data with outlier protection
   const growthRates = useMemo(() => {
-    const DEFAULT_RATES = { recent: 0.08, fiveYear: 0.10, tenYear: 0.10 };
+    const DEFAULT_RATES = { sixMonth: 0.08, oneYear: 0.08, fiveYear: 0.10, tenYear: 0.10 };
     const MIN_RATE = -0.15; // Cap at -15% annual
     const MAX_RATE = 0.35;  // Cap at 35% annual (very high but possible for growth stocks)
     
-    if (!wealthData || wealthData.length < 12) {
+    if (!wealthData || wealthData.length < 6) {
       return DEFAULT_RATES;
     }
 
     const historicalData = wealthData.filter(d => !d.isForecast && d.value > 0);
-    if (historicalData.length < 12) {
+    if (historicalData.length < 6) {
       return DEFAULT_RATES;
     }
 
@@ -64,15 +64,19 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
       return Math.max(MIN_RATE, Math.min(MAX_RATE, annualRate));
     };
 
-    // Recent (last 12 months) - use median for stability
+    // 6 months - use median for stability
+    const recent6 = historicalData.slice(-6);
+    const sixMonthRate = calcMedianGrowth(recent6);
+
+    // 1 year (last 12 months) - use median for stability
     const recent12 = historicalData.slice(-12);
-    const recentRate = calcMedianGrowth(recent12);
+    const oneYearRate = calcMedianGrowth(recent12);
 
     // 5-year (last 60 months) - blend CAGR and median
     const recent60 = historicalData.slice(-60);
     const fiveYearCAGR = recent60.length >= 12 
       ? calcBoundedCAGR(recent60[0].value, recent60[recent60.length - 1].value, recent60.length)
-      : recentRate;
+      : oneYearRate;
     const fiveYearMedian = calcMedianGrowth(recent60);
     const fiveYearRate = (fiveYearCAGR * 0.4 + fiveYearMedian * 0.6); // Weight median more
 
@@ -83,9 +87,9 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
     const tenYearMedian = calcMedianGrowth(historicalData);
     const tenYearRate = (tenYearCAGR * 0.4 + tenYearMedian * 0.6);
 
-    // Apply weighted blend for final rates (recent gets less weight for long-term projection)
     return {
-      recent: Math.max(MIN_RATE, Math.min(MAX_RATE, recentRate)),
+      sixMonth: Math.max(MIN_RATE, Math.min(MAX_RATE, sixMonthRate)),
+      oneYear: Math.max(MIN_RATE, Math.min(MAX_RATE, oneYearRate)),
       fiveYear: Math.max(MIN_RATE, Math.min(MAX_RATE, fiveYearRate)),
       tenYear: Math.max(MIN_RATE, Math.min(MAX_RATE, tenYearRate)),
     };
@@ -102,10 +106,11 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
     const lastContributions = lastHistorical.contributions;
     const lastDate = new Date(lastHistorical.date);
 
-    // Build chart data with 3 projection lines
+    // Build chart data with 4 projection lines
     const result = historicalData.map(d => ({
       ...d,
-      recentProjection: null,
+      sixMonthProjection: null,
+      oneYearProjection: null,
       fiveYearProjection: null,
       tenYearProjection: null,
     }));
@@ -113,18 +118,21 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
     // Add connecting point for projections
     result[result.length - 1] = {
       ...result[result.length - 1],
-      recentProjection: lastValue,
+      sixMonthProjection: lastValue,
+      oneYearProjection: lastValue,
       fiveYearProjection: lastValue,
       tenYearProjection: lastValue,
     };
 
     // Project 5 years (60 months)
-    let recentValue = lastValue;
+    let sixMonthValue = lastValue;
+    let oneYearValue = lastValue;
     let fiveYearValue = lastValue;
     let tenYearValue = lastValue;
     let contributions = lastContributions;
 
-    const monthlyRecentRate = growthRates.recent / 12;
+    const monthlySixMonthRate = growthRates.sixMonth / 12;
+    const monthlyOneYearRate = growthRates.oneYear / 12;
     const monthlyFiveYearRate = growthRates.fiveYear / 12;
     const monthlyTenYearRate = growthRates.tenYear / 12;
 
@@ -132,7 +140,8 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
       const futureDate = addMonths(lastDate, i);
       
       // Apply growth and add monthly contribution
-      recentValue = recentValue * (1 + monthlyRecentRate) + monthlyContribution;
+      sixMonthValue = sixMonthValue * (1 + monthlySixMonthRate) + monthlyContribution;
+      oneYearValue = oneYearValue * (1 + monthlyOneYearRate) + monthlyContribution;
       fiveYearValue = fiveYearValue * (1 + monthlyFiveYearRate) + monthlyContribution;
       tenYearValue = tenYearValue * (1 + monthlyTenYearRate) + monthlyContribution;
       contributions += monthlyContribution;
@@ -142,7 +151,8 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
         value: null,
         contributions: contributions,
         isForecast: true,
-        recentProjection: Math.round(recentValue),
+        sixMonthProjection: Math.round(sixMonthValue),
+        oneYearProjection: Math.round(oneYearValue),
         fiveYearProjection: Math.round(fiveYearValue),
         tenYearProjection: Math.round(tenYearValue),
       });
@@ -161,7 +171,8 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
     if (chartData.length === 0) return null;
     const last = chartData[chartData.length - 1];
     return {
-      recent: last.recentProjection,
+      sixMonth: last.sixMonthProjection,
+      oneYear: last.oneYearProjection,
       fiveYear: last.fiveYearProjection,
       tenYear: last.tenYearProjection,
       contributions: last.contributions,
@@ -193,28 +204,36 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
     const isHistorical = !data?.isForecast && data?.value;
 
     return (
-      <div className="glass-card p-4 text-sm border-emerald-glow/30 min-w-[200px]">
+      <div className="glass-card p-4 text-sm border-emerald-glow/30 min-w-[220px]">
         <p className="text-steel mb-3 font-medium">{formatDate(label)}</p>
         <div className="space-y-2">
           {isHistorical && data?.value && (
             <div className="flex justify-between">
               <span className="text-silver">Portfolio Value:</span>
-              <span className="font-mono font-semibold text-emerald-bright">
+              <span className="font-mono font-semibold text-pearl">
                 {formatValue(data.value)}
               </span>
             </div>
           )}
-          {data?.recentProjection && (
+          {data?.sixMonthProjection && (
             <div className="flex justify-between">
-              <span className="text-emerald-pale">Recent ({(growthRates.recent * 100).toFixed(0)}%):</span>
+              <span className="text-amber-bright">6M ({(growthRates.sixMonth * 100).toFixed(0)}%):</span>
+              <span className="font-mono text-amber-bright">
+                {formatValue(data.sixMonthProjection)}
+              </span>
+            </div>
+          )}
+          {data?.oneYearProjection && (
+            <div className="flex justify-between">
+              <span className="text-emerald-bright">1Y ({(growthRates.oneYear * 100).toFixed(0)}%):</span>
               <span className="font-mono text-emerald-bright">
-                {formatValue(data.recentProjection)}
+                {formatValue(data.oneYearProjection)}
               </span>
             </div>
           )}
           {data?.fiveYearProjection && (
             <div className="flex justify-between">
-              <span className="text-sapphire-bright">5Y Avg ({(growthRates.fiveYear * 100).toFixed(0)}%):</span>
+              <span className="text-sapphire-bright">5Y ({(growthRates.fiveYear * 100).toFixed(0)}%):</span>
               <span className="font-mono text-sapphire-bright">
                 {formatValue(data.fiveYearProjection)}
               </span>
@@ -222,7 +241,7 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
           )}
           {data?.tenYearProjection && (
             <div className="flex justify-between">
-              <span className="text-violet-bright">10Y Avg ({(growthRates.tenYear * 100).toFixed(0)}%):</span>
+              <span className="text-violet-bright">10Y ({(growthRates.tenYear * 100).toFixed(0)}%):</span>
               <span className="font-mono text-violet-bright">
                 {formatValue(data.tenYearProjection)}
               </span>
@@ -259,42 +278,50 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-emerald-bright"></div>
+            <div className="w-3 h-3 rounded-full bg-pearl"></div>
             <span className="text-steel">Historical</span>
           </div>
           <div className="flex items-center gap-2">
+            <div className="w-3 h-0.5 bg-amber-bright"></div>
+            <span className="text-steel">6M</span>
+          </div>
+          <div className="flex items-center gap-2">
             <div className="w-3 h-0.5 bg-emerald-bright"></div>
-            <span className="text-steel">Recent</span>
+            <span className="text-steel">1Y</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-0.5 bg-sapphire-bright"></div>
-            <span className="text-steel">5Y Avg</span>
+            <span className="text-steel">5Y</span>
           </div>
           <div className="flex items-center gap-2">
             <div className="w-3 h-0.5 bg-violet-bright"></div>
-            <span className="text-steel">10Y Avg</span>
+            <span className="text-steel">10Y</span>
           </div>
         </div>
       </div>
 
       {/* Final Projections Summary */}
       {finalProjections && (
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-5 gap-2 mb-6">
           <div className="p-3 rounded-lg bg-slate-dark/50 border border-slate-light/10 text-center">
             <p className="text-xs text-steel mb-1">Contributions</p>
-            <p className="font-mono font-semibold text-pearl">{formatValue(finalProjections.contributions)}</p>
+            <p className="font-mono font-semibold text-pearl text-sm">{formatValue(finalProjections.contributions)}</p>
+          </div>
+          <div className="p-3 rounded-lg bg-amber/10 border border-amber/20 text-center">
+            <p className="text-xs text-amber-bright mb-1">6M ({(growthRates.sixMonth * 100).toFixed(0)}%)</p>
+            <p className="font-mono font-semibold text-amber-bright text-sm">{formatValue(finalProjections.sixMonth)}</p>
           </div>
           <div className="p-3 rounded-lg bg-emerald-glow/10 border border-emerald-glow/20 text-center">
-            <p className="text-xs text-emerald-pale mb-1">Recent ({(growthRates.recent * 100).toFixed(0)}%)</p>
-            <p className="font-mono font-semibold text-emerald-bright">{formatValue(finalProjections.recent)}</p>
+            <p className="text-xs text-emerald-pale mb-1">1Y ({(growthRates.oneYear * 100).toFixed(0)}%)</p>
+            <p className="font-mono font-semibold text-emerald-bright text-sm">{formatValue(finalProjections.oneYear)}</p>
           </div>
           <div className="p-3 rounded-lg bg-sapphire/10 border border-sapphire/20 text-center">
-            <p className="text-xs text-sapphire-bright mb-1">5Y Avg ({(growthRates.fiveYear * 100).toFixed(0)}%)</p>
-            <p className="font-mono font-semibold text-sapphire-bright">{formatValue(finalProjections.fiveYear)}</p>
+            <p className="text-xs text-sapphire-bright mb-1">5Y ({(growthRates.fiveYear * 100).toFixed(0)}%)</p>
+            <p className="font-mono font-semibold text-sapphire-bright text-sm">{formatValue(finalProjections.fiveYear)}</p>
           </div>
           <div className="p-3 rounded-lg bg-violet/10 border border-violet/20 text-center">
-            <p className="text-xs text-violet-bright mb-1">10Y Avg ({(growthRates.tenYear * 100).toFixed(0)}%)</p>
-            <p className="font-mono font-semibold text-violet-bright">{formatValue(finalProjections.tenYear)}</p>
+            <p className="text-xs text-violet-bright mb-1">10Y ({(growthRates.tenYear * 100).toFixed(0)}%)</p>
+            <p className="font-mono font-semibold text-violet-bright text-sm">{formatValue(finalProjections.tenYear)}</p>
           </div>
         </div>
       )}
@@ -357,15 +384,26 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
             name="Contributions"
           />
           
-          {/* Recent projection line */}
+          {/* 6-Month projection line */}
           <Line
             type="monotone"
-            dataKey="recentProjection"
+            dataKey="sixMonthProjection"
+            stroke="#f59e0b"
+            strokeWidth={2}
+            dot={false}
+            connectNulls={false}
+            name="6M"
+          />
+          
+          {/* 1-Year projection line */}
+          <Line
+            type="monotone"
+            dataKey="oneYearProjection"
             stroke="#10b981"
             strokeWidth={2}
             dot={false}
             connectNulls={false}
-            name="Recent"
+            name="1Y"
           />
           
           {/* 5-Year projection line */}
@@ -376,7 +414,7 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
             strokeWidth={2}
             dot={false}
             connectNulls={false}
-            name="5Y Avg"
+            name="5Y"
           />
           
           {/* 10-Year projection line */}
@@ -387,7 +425,7 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
             strokeWidth={2}
             dot={false}
             connectNulls={false}
-            name="10Y Avg"
+            name="10Y"
           />
 
           {/* Today marker */}

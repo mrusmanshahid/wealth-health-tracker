@@ -12,7 +12,7 @@ import { format, addMonths } from 'date-fns';
 
 export default function ContributionGrowthChart({ stock, monthlyContribution, fullWidth = false }) {
   const chartData = useMemo(() => {
-    if (!monthlyContribution || monthlyContribution <= 0 || !stock.history || stock.history.length < 12) {
+    if (!monthlyContribution || monthlyContribution <= 0 || !stock.history || stock.history.length < 6) {
       return null;
     }
 
@@ -52,19 +52,23 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
     };
     
     // Calculate different growth rates with outlier protection
-    // 1. Recent growth (last 12 months)
-    const recent12 = history.slice(-12);
-    const recentGrowthRate = calcMedianGrowth(recent12);
+    // 1. 6-month growth
+    const recent6 = history.slice(-6);
+    const sixMonthGrowthRate = calcMedianGrowth(recent6);
     
-    // 2. 5-year average growth (blend CAGR and median)
+    // 2. 1-year growth (last 12 months)
+    const recent12 = history.slice(-12);
+    const oneYearGrowthRate = calcMedianGrowth(recent12);
+    
+    // 3. 5-year average growth (blend CAGR and median)
     const recent60 = history.slice(-60);
     const fiveYearCAGR = recent60.length >= 12
       ? calcBoundedCAGR(recent60[0].price, recent60[recent60.length - 1].price, recent60.length)
-      : recentGrowthRate;
+      : oneYearGrowthRate;
     const fiveYearMedian = calcMedianGrowth(recent60);
     const fiveYearGrowthRate = Math.max(MIN_RATE, Math.min(MAX_RATE, fiveYearCAGR * 0.4 + fiveYearMedian * 0.6));
     
-    // 3. 10-year average growth (blend CAGR and median)
+    // 4. 10-year average growth (blend CAGR and median)
     const tenYearCAGR = history.length >= 12
       ? calcBoundedCAGR(history[0].price, history[history.length - 1].price, history.length)
       : fiveYearGrowthRate;
@@ -76,34 +80,39 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
     const data = [];
     const startDate = new Date();
     
-    let lastPriceValue = 0;
+    let sixMonthValue = 0;
+    let oneYearValue = 0;
     let fiveYearValue = 0;
     let tenYearValue = 0;
     
     // Monthly growth rates
-    const lastPriceMonthlyRate = recentGrowthRate;
-    const fiveYearMonthlyRate = fiveYearGrowthRate;
-    const tenYearMonthlyRate = tenYearGrowthRate;
+    const sixMonthMonthlyRate = sixMonthGrowthRate / 12;
+    const oneYearMonthlyRate = oneYearGrowthRate / 12;
+    const fiveYearMonthlyRate = fiveYearGrowthRate / 12;
+    const tenYearMonthlyRate = tenYearGrowthRate / 12;
 
     for (let i = 0; i <= projectionMonths; i++) {
       const date = addMonths(startDate, i);
       
       // Each month: add contribution and apply growth
       if (i === 0) {
-        lastPriceValue = monthlyContribution;
+        sixMonthValue = monthlyContribution;
+        oneYearValue = monthlyContribution;
         fiveYearValue = monthlyContribution;
         tenYearValue = monthlyContribution;
       } else {
         // Apply monthly growth to existing value, then add new contribution
-        lastPriceValue = lastPriceValue * (1 + lastPriceMonthlyRate / 12) + monthlyContribution;
-        fiveYearValue = fiveYearValue * (1 + fiveYearMonthlyRate / 12) + monthlyContribution;
-        tenYearValue = tenYearValue * (1 + tenYearMonthlyRate / 12) + monthlyContribution;
+        sixMonthValue = sixMonthValue * (1 + sixMonthMonthlyRate) + monthlyContribution;
+        oneYearValue = oneYearValue * (1 + oneYearMonthlyRate) + monthlyContribution;
+        fiveYearValue = fiveYearValue * (1 + fiveYearMonthlyRate) + monthlyContribution;
+        tenYearValue = tenYearValue * (1 + tenYearMonthlyRate) + monthlyContribution;
       }
       
       data.push({
         date: format(date, 'MMM yyyy'),
         month: i,
-        lastPrice: Math.round(lastPriceValue),
+        sixMonth: Math.round(sixMonthValue),
+        oneYear: Math.round(oneYearValue),
         fiveYear: Math.round(fiveYearValue),
         tenYear: Math.round(tenYearValue),
         contributions: monthlyContribution * (i + 1),
@@ -113,12 +122,14 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
     return {
       data,
       rates: {
-        lastPrice: (recentGrowthRate * 100).toFixed(1),
+        sixMonth: (sixMonthGrowthRate * 100).toFixed(1),
+        oneYear: (oneYearGrowthRate * 100).toFixed(1),
         fiveYear: (fiveYearGrowthRate * 100).toFixed(1),
         tenYear: (tenYearGrowthRate * 100).toFixed(1),
       },
       finalValues: {
-        lastPrice: data[data.length - 1].lastPrice,
+        sixMonth: data[data.length - 1].sixMonth,
+        oneYear: data[data.length - 1].oneYear,
         fiveYear: data[data.length - 1].fiveYear,
         tenYear: data[data.length - 1].tenYear,
         contributions: data[data.length - 1].contributions,
@@ -139,15 +150,39 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
   const CustomTooltip = ({ active, payload, label }) => {
     if (!active || !payload || !payload.length) return null;
 
+    const data = payload[0]?.payload;
+
     return (
-      <div className="glass-card p-3 text-xs border-slate-light/30">
+      <div className="glass-card p-3 text-xs border-slate-light/30 min-w-[160px]">
         <p className="text-silver font-medium mb-2">{label}</p>
-        {payload.map((entry, index) => (
-          <div key={index} className="flex justify-between gap-4">
-            <span style={{ color: entry.color }}>{entry.name}:</span>
-            <span className="font-mono">{formatValue(entry.value)}</span>
+        {data?.sixMonth && (
+          <div className="flex justify-between gap-4">
+            <span className="text-amber-bright">6M ({chartData.rates.sixMonth}%):</span>
+            <span className="font-mono">{formatValue(data.sixMonth)}</span>
           </div>
-        ))}
+        )}
+        {data?.oneYear && (
+          <div className="flex justify-between gap-4">
+            <span className="text-emerald-bright">1Y ({chartData.rates.oneYear}%):</span>
+            <span className="font-mono">{formatValue(data.oneYear)}</span>
+          </div>
+        )}
+        {data?.fiveYear && (
+          <div className="flex justify-between gap-4">
+            <span className="text-sapphire-bright">5Y ({chartData.rates.fiveYear}%):</span>
+            <span className="font-mono">{formatValue(data.fiveYear)}</span>
+          </div>
+        )}
+        {data?.tenYear && (
+          <div className="flex justify-between gap-4">
+            <span className="text-violet-bright">10Y ({chartData.rates.tenYear}%):</span>
+            <span className="font-mono">{formatValue(data.tenYear)}</span>
+          </div>
+        )}
+        <div className="flex justify-between gap-4 pt-1 mt-1 border-t border-slate-light/20">
+          <span className="text-steel">Contributions:</span>
+          <span className="font-mono">{formatValue(data?.contributions)}</span>
+        </div>
       </div>
     );
   };
@@ -186,32 +221,42 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
               dot={false}
             />
             
-            {/* 10-year avg */}
+            {/* 10-year */}
             <Line
               type="monotone"
               dataKey="tenYear"
-              name={`10Y Avg (${chartData.rates.tenYear}%)`}
+              name={`10Y (${chartData.rates.tenYear}%)`}
               stroke="#8b5cf6"
               strokeWidth={1.5}
               dot={false}
             />
             
-            {/* 5-year avg */}
+            {/* 5-year */}
             <Line
               type="monotone"
               dataKey="fiveYear"
-              name={`5Y Avg (${chartData.rates.fiveYear}%)`}
+              name={`5Y (${chartData.rates.fiveYear}%)`}
               stroke="#3b82f6"
               strokeWidth={1.5}
               dot={false}
             />
             
-            {/* Recent/Last price */}
+            {/* 1-year */}
             <Line
               type="monotone"
-              dataKey="lastPrice"
-              name={`Recent (${chartData.rates.lastPrice}%)`}
+              dataKey="oneYear"
+              name={`1Y (${chartData.rates.oneYear}%)`}
               stroke="#10b981"
+              strokeWidth={1.5}
+              dot={false}
+            />
+            
+            {/* 6-month */}
+            <Line
+              type="monotone"
+              dataKey="sixMonth"
+              name={`6M (${chartData.rates.sixMonth}%)`}
+              stroke="#f59e0b"
               strokeWidth={1.5}
               dot={false}
             />
@@ -220,25 +265,32 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
       </div>
 
       {/* Legend with values */}
-      <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
+      <div className="grid grid-cols-4 gap-2 mt-3 text-xs">
+        <div className="text-center">
+          <div className="flex items-center justify-center gap-1 mb-1">
+            <div className="w-2 h-2 rounded-full bg-amber-bright"></div>
+            <span className="text-steel">6M</span>
+          </div>
+          <p className="font-mono text-amber-bright">{formatValue(chartData.finalValues.sixMonth)}</p>
+        </div>
         <div className="text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
             <div className="w-2 h-2 rounded-full bg-emerald-bright"></div>
-            <span className="text-steel">Recent</span>
+            <span className="text-steel">1Y</span>
           </div>
-          <p className="font-mono text-emerald-bright">{formatValue(chartData.finalValues.lastPrice)}</p>
+          <p className="font-mono text-emerald-bright">{formatValue(chartData.finalValues.oneYear)}</p>
         </div>
         <div className="text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
             <div className="w-2 h-2 rounded-full bg-sapphire"></div>
-            <span className="text-steel">5Y Avg</span>
+            <span className="text-steel">5Y</span>
           </div>
           <p className="font-mono text-sapphire-bright">{formatValue(chartData.finalValues.fiveYear)}</p>
         </div>
         <div className="text-center">
           <div className="flex items-center justify-center gap-1 mb-1">
             <div className="w-2 h-2 rounded-full bg-violet"></div>
-            <span className="text-steel">10Y Avg</span>
+            <span className="text-steel">10Y</span>
           </div>
           <p className="font-mono text-violet-bright">{formatValue(chartData.finalValues.tenYear)}</p>
         </div>
