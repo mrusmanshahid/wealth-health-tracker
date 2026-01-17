@@ -331,6 +331,7 @@ function App() {
                   <StockCard
                     key={stock.symbol}
                     stock={stock}
+                    totalPortfolioValue={metrics.currentValue}
                     onRemove={handleRemoveStock}
                     onViewChart={handleViewChart}
                     onEdit={handleEditStock}

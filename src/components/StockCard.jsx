@@ -1,11 +1,14 @@
-import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit3, PiggyBank } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit3, PiggyBank, PieChart } from 'lucide-react';
 import ContributionGrowthChart from './ContributionGrowthChart';
 import { formatCurrency } from '../services/currencyApi';
 
-export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
+export default function StockCard({ stock, totalPortfolioValue, onRemove, onViewChart, onEdit }) {
   const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
   const currentPrice = stock.currentPrice || stock.purchasePrice;
   const currentValue = shares * currentPrice;
+  
+  // Calculate portfolio weight
+  const portfolioWeight = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0;
   const investedAmount = stock.investedAmount || (shares * stock.purchasePrice);
   const gain = currentValue - investedAmount;
   const gainPercent = (gain / investedAmount) * 100;
@@ -33,8 +36,13 @@ export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
     <div className="glass-card p-5 hover:border-emerald-glow/30 transition-all duration-300 group">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg font-bold text-emerald-bright">{stock.symbol}</span>
+            {/* Portfolio Weight Tag */}
+            <span className="text-xs px-1.5 py-0.5 rounded bg-sapphire/20 text-sapphire-bright flex items-center gap-1">
+              <PieChart className="w-3 h-3" />
+              {portfolioWeight.toFixed(1)}%
+            </span>
             {isNonUSD && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-amber/20 text-amber-bright">
                 {stock.currency}
