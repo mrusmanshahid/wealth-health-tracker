@@ -98,11 +98,12 @@ export async function searchStocks(query) {
     const data = await response.json();
     
     return (data.quotes || [])
-      .filter(q => q.quoteType === 'EQUITY')
+      .filter(q => ['EQUITY', 'ETF', 'MUTUALFUND'].includes(q.quoteType))
       .map(q => ({
         symbol: q.symbol,
         name: q.longname || q.shortname || q.symbol,
         exchange: q.exchange,
+        type: q.quoteType,
       }));
   } catch (error) {
     console.error('Search error:', error);

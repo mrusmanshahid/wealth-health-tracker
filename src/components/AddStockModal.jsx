@@ -192,8 +192,15 @@ export default function AddStockModal({ isOpen, onClose, onAdd }) {
                     onClick={() => handleSelectStock(stock)}
                     className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-light/50 transition-colors"
                   >
-                    <span className="font-semibold text-emerald-bright">{stock.symbol}</span>
-                    <span className="text-silver ml-2 text-sm">{stock.name}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-emerald-bright">{stock.symbol}</span>
+                      {stock.type && stock.type !== 'EQUITY' && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-sapphire/20 text-sapphire-bright">
+                          {stock.type}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-silver text-sm">{stock.name}</span>
                   </button>
                 ))}
               </div>
