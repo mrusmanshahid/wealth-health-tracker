@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText, Receipt } from 'lucide-react';
 import PortfolioChart from './PortfolioChart';
 import ContributionGrowthChart from './ContributionGrowthChart';
 import EarningsReport from './EarningsReport';
+import TransactionHistory from './TransactionHistory';
 import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
 
-export default function StockDetailModal({ stock, onClose }) {
+export default function StockDetailModal({ stock, onClose, onAddTransaction, onDeleteTransaction }) {
   const [activeTab, setActiveTab] = useState('overview');
   
   if (!stock) return null;
@@ -80,7 +81,7 @@ export default function StockDetailModal({ stock, onClose }) {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 border-b border-slate-light/30 pb-4">
+        <div className="flex flex-wrap gap-2 mb-6 border-b border-slate-light/30 pb-4">
           <button
             onClick={() => setActiveTab('overview')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -93,6 +94,17 @@ export default function StockDetailModal({ stock, onClose }) {
             Overview
           </button>
           <button
+            onClick={() => setActiveTab('transactions')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'transactions'
+                ? 'bg-amber-500/20 text-amber-400'
+                : 'text-steel hover:text-silver hover:bg-slate-light/30'
+            }`}
+          >
+            <Receipt className="w-4 h-4 inline mr-2" />
+            Transactions
+          </button>
+          <button
             onClick={() => setActiveTab('earnings')}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               activeTab === 'earnings'
@@ -101,7 +113,7 @@ export default function StockDetailModal({ stock, onClose }) {
             }`}
           >
             <FileText className="w-4 h-4 inline mr-2" />
-            Financials & Earnings
+            Financials
           </button>
         </div>
 
@@ -234,6 +246,16 @@ export default function StockDetailModal({ stock, onClose }) {
               )}
             </div>
           </>
+        )}
+
+        {/* Transactions Tab */}
+        {activeTab === 'transactions' && (
+          <TransactionHistory
+            transactions={stock.transactions || []}
+            currentPrice={stock.currentPrice || stock.purchasePrice}
+            onAddTransaction={(transaction) => onAddTransaction?.(stock.symbol, transaction)}
+            onDeleteTransaction={(transactionId) => onDeleteTransaction?.(stock.symbol, transactionId)}
+          />
         )}
 
         {/* Earnings Tab */}

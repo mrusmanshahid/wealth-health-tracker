@@ -251,6 +251,94 @@ function App() {
     setEditingStock(null);
   };
 
+  const handleAddTransaction = (symbol, transaction) => {
+    const updatedStocks = stocks.map(s => {
+      if (s.symbol === symbol) {
+        const transactions = [...(s.transactions || []), transaction];
+        
+        // Recalculate shares and invested amount from transactions
+        const totals = transactions.reduce((acc, t) => {
+          if (t.type === 'buy') {
+            acc.totalShares += t.shares;
+            acc.totalInvested += t.shares * t.price;
+          } else {
+            acc.totalShares -= t.shares;
+          }
+          return acc;
+        }, { totalShares: 0, totalInvested: 0 });
+        
+        const avgPrice = totals.totalShares > 0 
+          ? totals.totalInvested / (totals.totalShares + transactions.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.shares, 0))
+          : s.purchasePrice;
+        
+        return {
+          ...s,
+          transactions,
+          shares: totals.totalShares,
+          investedAmount: totals.totalInvested,
+          purchasePrice: avgPrice,
+        };
+      }
+      return s;
+    });
+    
+    setStocks(updatedStocks);
+    savePortfolio(updatedStocks);
+    
+    // Update selected stock if viewing it
+    if (selectedStock?.symbol === symbol) {
+      setSelectedStock(updatedStocks.find(s => s.symbol === symbol));
+    }
+  };
+
+  const handleDeleteTransaction = (symbol, transactionId) => {
+    const updatedStocks = stocks.map(s => {
+      if (s.symbol === symbol) {
+        const transactions = (s.transactions || []).filter(t => t.id !== transactionId);
+        
+        // Recalculate shares and invested amount from remaining transactions
+        const totals = transactions.reduce((acc, t) => {
+          if (t.type === 'buy') {
+            acc.totalShares += t.shares;
+            acc.totalInvested += t.shares * t.price;
+          } else {
+            acc.totalShares -= t.shares;
+          }
+          return acc;
+        }, { totalShares: 0, totalInvested: 0 });
+        
+        // If no transactions left, keep original values
+        if (transactions.length === 0) {
+          return {
+            ...s,
+            transactions,
+          };
+        }
+        
+        const avgPrice = totals.totalShares > 0 
+          ? totals.totalInvested / (totals.totalShares + transactions.filter(t => t.type === 'sell').reduce((acc, t) => acc + t.shares, 0))
+          : s.purchasePrice;
+        
+        return {
+          ...s,
+          transactions,
+          shares: totals.totalShares,
+          investedAmount: totals.totalInvested,
+          purchasePrice: avgPrice,
+        };
+      }
+      return s;
+    });
+    
+    setStocks(updatedStocks);
+    savePortfolio(updatedStocks);
+    
+    // Update selected stock if viewing it
+    if (selectedStock?.symbol === symbol) {
+      setSelectedStock(updatedStocks.find(s => s.symbol === symbol));
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -363,6 +451,8 @@ function App() {
         <StockDetailModal
           stock={selectedStock}
           onClose={() => setSelectedStock(null)}
+          onAddTransaction={handleAddTransaction}
+          onDeleteTransaction={handleDeleteTransaction}
         />
 
         <EditStockModal
