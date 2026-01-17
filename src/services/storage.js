@@ -64,7 +64,6 @@ export function loadSettings() {
     const data = localStorage.getItem(SETTINGS_KEY);
     if (!data) {
       return {
-        monthlyContribution: 0,
         currency: 'USD',
         forecastYears: 5,
       };
@@ -73,7 +72,6 @@ export function loadSettings() {
   } catch (error) {
     console.error('Error loading settings:', error);
     return {
-      monthlyContribution: 0,
       currency: 'USD',
       forecastYears: 5,
     };

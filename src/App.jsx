@@ -19,7 +19,7 @@ import { generateDemoPortfolio } from './utils/demoData';
 
 function App() {
   const [stocks, setStocks] = useState([]);
-  const [settings, setSettings] = useState({ monthlyContribution: 0, forecastYears: 5 });
+  const [settings, setSettings] = useState({ forecastYears: 5 });
   const [wealthData, setWealthData] = useState([]);
   const [metrics, setMetrics] = useState({
     totalInvested: 0,
@@ -60,10 +60,14 @@ function App() {
     loadData();
   }, []);
 
+  // Calculate total monthly contribution from individual stocks
+  const totalMonthlyContribution = stocks.reduce((sum, stock) => sum + (stock.monthlyContribution || 0), 0);
+
   // Recalculate wealth when stocks or settings change
   useEffect(() => {
     if (stocks.length > 0) {
-      const wealth = calculateWealthGrowth(stocks, settings.monthlyContribution, settings.forecastYears);
+      const totalContribution = stocks.reduce((sum, stock) => sum + (stock.monthlyContribution || 0), 0);
+      const wealth = calculateWealthGrowth(stocks, totalContribution, settings.forecastYears);
       setWealthData(wealth);
       
       const portfolioMetrics = calculatePortfolioMetrics(stocks);
@@ -250,7 +254,7 @@ function App() {
             <div className="mb-8">
               <WealthChart 
                 wealthData={wealthData} 
-                monthlyContribution={settings.monthlyContribution}
+                monthlyContribution={totalMonthlyContribution}
               />
             </div>
 
@@ -306,6 +310,7 @@ function App() {
           onClose={() => setShowSettings(false)}
           settings={settings}
           onSave={handleSaveSettings}
+          totalMonthlyContribution={totalMonthlyContribution}
         />
 
         <StockDetailModal

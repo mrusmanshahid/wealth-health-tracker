@@ -1,18 +1,15 @@
-import { DollarSign, Calendar, Save, X } from 'lucide-react';
+import { Calendar, Save, X, PiggyBank } from 'lucide-react';
 import { useState, useEffect } from 'react';
 
-export default function SettingsPanel({ isOpen, onClose, settings, onSave }) {
-  const [monthlyContribution, setMonthlyContribution] = useState(settings.monthlyContribution || 0);
+export default function SettingsPanel({ isOpen, onClose, settings, onSave, totalMonthlyContribution }) {
   const [forecastYears, setForecastYears] = useState(settings.forecastYears || 5);
 
   useEffect(() => {
-    setMonthlyContribution(settings.monthlyContribution || 0);
     setForecastYears(settings.forecastYears || 5);
   }, [settings]);
 
   const handleSave = () => {
     onSave({
-      monthlyContribution: parseFloat(monthlyContribution) || 0,
       forecastYears: parseInt(forecastYears) || 5,
     });
     onClose();
@@ -38,22 +35,18 @@ export default function SettingsPanel({ isOpen, onClose, settings, onSave }) {
         <h2 className="text-xl font-bold text-pearl mb-6">Portfolio Settings</h2>
 
         <div className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-silver mb-2">
-              <DollarSign className="inline w-4 h-4 mr-1" />
-              Monthly Contribution ($)
-            </label>
-            <input
-              type="number"
-              value={monthlyContribution}
-              onChange={(e) => setMonthlyContribution(e.target.value)}
-              placeholder="500"
-              min="0"
-              step="50"
-              className="glass-input w-full"
-            />
-            <p className="text-xs text-steel mt-1">
-              Amount you plan to invest monthly. Used in forecast calculations.
+          {/* Total Monthly Contribution (read-only, sum of individual stocks) */}
+          <div className="p-4 rounded-xl bg-slate-dark/50 border border-slate-light/20">
+            <div className="flex items-center gap-2 mb-2">
+              <PiggyBank className="w-4 h-4 text-amber-bright" />
+              <span className="text-sm font-medium text-silver">Total Monthly Contribution</span>
+            </div>
+            <p className="text-2xl font-bold font-mono text-amber-bright">
+              ${(totalMonthlyContribution || 0).toLocaleString()}
+            </p>
+            <p className="text-xs text-steel mt-2">
+              This is the sum of monthly contributions from all your stocks. 
+              Edit individual stocks to change their contribution amounts.
             </p>
           </div>
 
@@ -94,4 +87,3 @@ export default function SettingsPanel({ isOpen, onClose, settings, onSave }) {
     </div>
   );
 }
-
