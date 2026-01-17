@@ -1,4 +1,4 @@
-import { TrendingUp, Wallet, Settings, RefreshCw } from 'lucide-react';
+import { Heart, RefreshCw } from 'lucide-react';
 
 export default function Header({ onRefresh, isLoading }) {
   return (
@@ -6,16 +6,17 @@ export default function Header({ onRefresh, isLoading }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <div className="absolute inset-0 bg-emerald-glow/30 blur-xl rounded-full"></div>
-            <div className="relative bg-gradient-to-br from-emerald-glow to-emerald-bright p-3 rounded-xl">
-              <TrendingUp className="w-7 h-7 text-white" />
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-glow/40 to-cyan-400/30 blur-xl rounded-full"></div>
+            <div className="relative bg-gradient-to-br from-emerald-glow via-emerald-bright to-cyan-500 p-3 rounded-xl shadow-lg shadow-emerald-glow/20">
+              <Heart className="w-7 h-7 text-white fill-white/30" />
             </div>
           </div>
           <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-pearl to-silver bg-clip-text text-transparent">
-              Wealth Forecast
+            <h1 className="text-2xl font-extrabold tracking-tight">
+              <span className="bg-gradient-to-r from-emerald-bright via-cyan-400 to-emerald-glow bg-clip-text text-transparent">W</span>
+              <span className="bg-gradient-to-r from-pearl to-silver bg-clip-text text-transparent">HEALTH</span>
             </h1>
-            <p className="text-sm text-steel">Track & predict your portfolio growth</p>
+            <p className="text-sm text-steel">Your financial health companion</p>
           </div>
         </div>
         

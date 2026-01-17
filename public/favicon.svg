@@ -1,12 +1,51 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
   <defs>
-    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0e17;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#151c2c;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="wGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#22d3ee;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#10b981;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="heartGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#10b981;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
     </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
-  <rect width="100" height="100" rx="20" fill="#0a0e17"/>
-  <path d="M20 70 L35 55 L50 60 L65 40 L80 30" stroke="url(#grad)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <circle cx="80" cy="30" r="6" fill="#10b981"/>
+  <!-- Background -->
+  <rect width="100" height="100" rx="22" fill="url(#bgGrad)"/>
+  <!-- Subtle grid pattern -->
+  <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+    <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+  </pattern>
+  <rect width="100" height="100" rx="22" fill="url(#grid)" opacity="0.3"/>
+  <!-- W letter stylized as chart going up -->
+  <path d="M18 32 L30 65 L42 45 L54 65 L66 32" 
+        stroke="url(#wGrad)" 
+        stroke-width="8" 
+        stroke-linecap="round" 
+        stroke-linejoin="round" 
+        fill="none"
+        filter="url(#glow)"/>
+  <!-- Small heart at top right -->
+  <path d="M75 28 C75 23 80 20 85 24 C90 20 95 23 95 28 C95 36 85 44 85 44 C85 44 75 36 75 28Z" 
+        fill="url(#heartGrad)"
+        filter="url(#glow)"/>
+  <!-- Pulse line under W -->
+  <path d="M15 78 L35 78 L40 72 L45 84 L50 78 L85 78" 
+        stroke="#22d3ee" 
+        stroke-width="2.5" 
+        stroke-linecap="round" 
+        stroke-linejoin="round" 
+        fill="none"
+        opacity="0.8"/>
 </svg>
-

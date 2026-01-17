@@ -1,18 +1,20 @@
-import { TrendingUp, Plus, Sparkles, Play } from 'lucide-react';
+import { Heart, Plus, Sparkles, Play, TrendingUp } from 'lucide-react';
 
 export default function EmptyState({ onAddStock, onLoadDemo }) {
   return (
     <div className="glass-card p-12 text-center">
       <div className="relative inline-block mb-6">
-        <div className="absolute inset-0 bg-emerald-glow/20 blur-2xl rounded-full"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-glow/30 to-cyan-400/20 blur-2xl rounded-full"></div>
         <div className="relative bg-gradient-to-br from-slate-dark to-obsidian p-6 rounded-2xl border border-emerald-glow/20">
-          <TrendingUp className="w-16 h-16 text-emerald-bright mx-auto" />
+          <Heart className="w-16 h-16 text-emerald-bright mx-auto fill-emerald-glow/20" />
         </div>
       </div>
       
-      <h2 className="text-2xl font-bold text-pearl mb-3">
-        Start Building Your Wealth
+      <h2 className="text-3xl font-extrabold mb-3">
+        <span className="bg-gradient-to-r from-emerald-bright via-cyan-400 to-emerald-glow bg-clip-text text-transparent">W</span>
+        <span className="text-pearl">HEALTH</span>
       </h2>
+      <p className="text-lg text-silver mb-2">Your Financial Health Companion</p>
       <p className="text-silver max-w-md mx-auto mb-8">
         Add your first stock to track your portfolio performance and see AI-powered forecasts 
         for the next 5 years.
