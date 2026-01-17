@@ -2,6 +2,7 @@
 // In production, you'd want your own backend to proxy these requests
 
 const CORS_PROXY = 'https://corsproxy.io/?';
+const ALT_CORS_PROXY = 'https://api.allorigins.win/raw?url=';
 
 export async function fetchStockHistory(symbol, years = 10) {
   const endDate = Math.floor(Date.now() / 1000);
@@ -113,139 +114,129 @@ export async function searchStocks(query) {
 
 export async function fetchQuarterlyEarnings(symbol) {
   try {
-    // Fetch earnings data from Yahoo Finance using multiple module requests
-    const modules = 'earnings,earningsHistory,earningsTrend,financialData,defaultKeyStatistics,summaryDetail';
+    // Use Yahoo Finance Insights API (works without authentication)
+    const insightsUrl = `https://query1.finance.yahoo.com/ws/insights/v2/finance/insights?symbol=${symbol}`;
     
-    // Try query2 endpoint first (more reliable)
-    let url = `${CORS_PROXY}${encodeURIComponent(
-      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=${modules}`
-    )}`;
+    console.log('Fetching insights for:', symbol);
     
-    console.log('Fetching earnings for:', symbol);
-    let response = await fetch(url);
+    // Try different CORS proxies
+    const proxies = [
+      `${ALT_CORS_PROXY}${encodeURIComponent(insightsUrl)}`,
+      `${CORS_PROXY}${encodeURIComponent(insightsUrl)}`,
+    ];
     
-    // Fallback to query1 if query2 fails
-    if (!response.ok) {
-      console.log('query2 failed, trying query1...');
-      url = `${CORS_PROXY}${encodeURIComponent(
-        `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=${modules}`
-      )}`;
-      response = await fetch(url);
+    let data = null;
+    let lastError = null;
+    
+    for (const proxyUrl of proxies) {
+      try {
+        console.log('Trying proxy:', proxyUrl.substring(0, 60) + '...');
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+          console.log('Proxy returned:', response.status);
+          continue;
+        }
+        
+        const responseData = await response.json();
+        
+        // Check if we got a proxy error
+        if (responseData.error && !responseData.finance) {
+          console.log('Proxy error:', responseData.error);
+          continue;
+        }
+        
+        // Check if we got Yahoo data
+        if (responseData.finance?.result) {
+          data = responseData.finance.result;
+          console.log('Success with insights API!');
+          break;
+        }
+      } catch (err) {
+        console.log('Proxy failed:', err.message);
+        lastError = err;
+      }
     }
     
-    if (!response.ok) {
-      console.error('Response not OK:', response.status, response.statusText);
-      throw new Error(`HTTP error: ${response.status}`);
+    if (!data) {
+      throw lastError || new Error('Could not fetch financial data');
     }
     
-    const data = await response.json();
-    console.log('Earnings API response:', data);
+    console.log('Insights data:', data);
     
-    // Check for API error
-    if (data.quoteSummary?.error) {
-      console.error('API Error:', data.quoteSummary.error);
-      throw new Error(data.quoteSummary.error.description || 'API error');
-    }
+    // Extract data from insights API
+    const instrumentInfo = data.instrumentInfo || {};
+    const companySnapshot = data.companySnapshot || {};
+    const recommendation = data.recommendation || {};
+    const technicals = instrumentInfo.technicalEvents || {};
+    const keyTechnicals = instrumentInfo.keyTechnicals || {};
+    const valuation = instrumentInfo.valuation || {};
+    const company = companySnapshot.company || {};
     
-    const result = data.quoteSummary?.result?.[0];
-    if (!result) {
-      console.error('No result in response');
-      throw new Error(`No earnings data found for ${symbol}`);
-    }
-    
-    console.log('Earnings result modules:', Object.keys(result));
-
-    const earnings = result.earnings || {};
-    const earningsHistory = result.earningsHistory?.history || [];
-    const earningsTrend = result.earningsTrend?.trend || [];
-    const financialData = result.financialData || {};
-    const keyStats = result.defaultKeyStatistics || {};
-
-    // Get quarterly earnings (last 4 quarters)
-    const quarterlyEarnings = (earnings.earningsChart?.quarterly || []).map(q => ({
-      quarter: q.date,
-      actual: q.actual?.raw || 0,
-      estimate: q.estimate?.raw || 0,
-      surprise: q.actual?.raw && q.estimate?.raw 
-        ? ((q.actual.raw - q.estimate.raw) / Math.abs(q.estimate.raw) * 100).toFixed(1)
-        : 0,
-      beat: q.actual?.raw > q.estimate?.raw,
-    }));
-
-    // Get earnings history with more details
-    const earningsHistoryData = earningsHistory.slice(0, 4).map(eh => ({
-      quarter: eh.quarter?.fmt || '',
-      period: eh.period || '',
-      epsActual: eh.epsActual?.raw || 0,
-      epsEstimate: eh.epsEstimate?.raw || 0,
-      epsDifference: eh.epsDifference?.raw || 0,
-      surprisePercent: eh.surprisePercent?.raw ? (eh.surprisePercent.raw * 100).toFixed(1) : '0',
-    }));
-
-    // Get current quarter and next quarter estimates
-    const currentQuarterEstimate = earningsTrend.find(t => t.period === '0q');
-    const nextQuarterEstimate = earningsTrend.find(t => t.period === '+1q');
-
-    // Financial metrics
+    // Build metrics from available data
     const metrics = {
-      // Profitability
-      revenue: financialData.totalRevenue?.fmt || 'N/A',
-      revenueRaw: financialData.totalRevenue?.raw || 0,
-      grossMargins: financialData.grossMargins?.fmt || 'N/A',
-      operatingMargins: financialData.operatingMargins?.fmt || 'N/A',
-      profitMargins: financialData.profitMargins?.fmt || 'N/A',
+      // Valuation from insights
+      valuation: valuation.description || 'N/A',
+      discount: valuation.discount || 'N/A',
       
-      // Per Share
-      earningsPerShare: financialData.earningsPerShare?.fmt || earnings.earningsChart?.currentQuarterEstimate?.fmt || 'N/A',
-      revenuePerShare: financialData.revenuePerShare?.fmt || 'N/A',
-      bookValue: keyStats.bookValue?.fmt || 'N/A',
+      // Analyst recommendation
+      targetPrice: recommendation.targetPrice ? `$${recommendation.targetPrice}` : 'N/A',
+      rating: recommendation.rating || 'N/A',
+      provider: recommendation.provider || 'N/A',
       
-      // Valuation
-      peRatio: keyStats.forwardPE?.fmt || keyStats.trailingPE?.fmt || 'N/A',
-      pegRatio: keyStats.pegRatio?.fmt || 'N/A',
-      priceToBook: keyStats.priceToBook?.fmt || 'N/A',
+      // Technical levels
+      support: keyTechnicals.support ? `$${keyTechnicals.support.toFixed(2)}` : 'N/A',
+      resistance: keyTechnicals.resistance ? `$${keyTechnicals.resistance.toFixed(2)}` : 'N/A',
+      stopLoss: keyTechnicals.stopLoss ? `$${keyTechnicals.stopLoss.toFixed(2)}` : 'N/A',
       
-      // Growth
-      earningsGrowth: financialData.earningsGrowth?.fmt || 'N/A',
-      revenueGrowth: financialData.revenueGrowth?.fmt || 'N/A',
+      // Company scores (0-1 scale, convert to percentage)
+      innovativeness: company.innovativeness ? `${(company.innovativeness * 100).toFixed(0)}%` : 'N/A',
+      hiring: company.hiring ? `${(company.hiring * 100).toFixed(0)}%` : 'N/A',
+      sustainability: company.sustainability ? `${(company.sustainability * 100).toFixed(0)}%` : 'N/A',
+      insiderSentiment: company.insiderSentiments ? `${(company.insiderSentiments * 100).toFixed(0)}%` : 'N/A',
+      earningsReports: company.earningsReports ? `${(company.earningsReports * 100).toFixed(0)}%` : 'N/A',
+      dividends: company.dividends ? `${(company.dividends * 100).toFixed(0)}%` : 'N/A',
       
-      // Cash & Debt
-      totalCash: financialData.totalCash?.fmt || 'N/A',
-      totalDebt: financialData.totalDebt?.fmt || 'N/A',
-      debtToEquity: financialData.debtToEquity?.fmt || 'N/A',
-      
-      // Returns
-      returnOnEquity: financialData.returnOnEquity?.fmt || 'N/A',
-      returnOnAssets: financialData.returnOnAssets?.fmt || 'N/A',
-      
-      // Dividend
-      dividendYield: keyStats.dividendYield?.fmt || 'N/A',
-      dividendRate: keyStats.dividendRate?.fmt || 'N/A',
+      // Sector
+      sector: companySnapshot.sectorInfo || 'N/A',
+    };
+
+    // Technical outlook
+    const shortTerm = technicals.shortTermOutlook || {};
+    const midTerm = technicals.intermediateTermOutlook || {};
+    const longTerm = technicals.longTermOutlook || {};
+    
+    const outlook = {
+      shortTerm: {
+        direction: shortTerm.direction || 'N/A',
+        score: shortTerm.scoreDescription || 'N/A',
+        description: shortTerm.stateDescription || 'N/A',
+      },
+      midTerm: {
+        direction: midTerm.direction || 'N/A',
+        score: midTerm.scoreDescription || 'N/A',
+        description: midTerm.stateDescription || 'N/A',
+      },
+      longTerm: {
+        direction: longTerm.direction || 'N/A',
+        score: longTerm.scoreDescription || 'N/A',
+        description: longTerm.stateDescription || 'N/A',
+      },
     };
 
     return {
       symbol: symbol.toUpperCase(),
-      quarterlyEarnings,
-      earningsHistory: earningsHistoryData,
-      estimates: {
-        currentQuarter: currentQuarterEstimate ? {
-          period: currentQuarterEstimate.period,
-          epsEstimate: currentQuarterEstimate.earningsEstimate?.avg?.fmt || 'N/A',
-          revenueEstimate: currentQuarterEstimate.revenueEstimate?.avg?.fmt || 'N/A',
-          growth: currentQuarterEstimate.growth?.fmt || 'N/A',
-        } : null,
-        nextQuarter: nextQuarterEstimate ? {
-          period: nextQuarterEstimate.period,
-          epsEstimate: nextQuarterEstimate.earningsEstimate?.avg?.fmt || 'N/A',
-          revenueEstimate: nextQuarterEstimate.revenueEstimate?.avg?.fmt || 'N/A',
-          growth: nextQuarterEstimate.growth?.fmt || 'N/A',
-        } : null,
-      },
       metrics,
+      outlook,
+      recommendation: {
+        targetPrice: recommendation.targetPrice,
+        rating: recommendation.rating,
+        provider: recommendation.provider,
+      },
       lastUpdated: new Date().toISOString(),
     };
   } catch (error) {
-    console.error(`Error fetching earnings for ${symbol}:`, error);
+    console.error(`Error fetching insights for ${symbol}:`, error);
     return null;
   }
 }
