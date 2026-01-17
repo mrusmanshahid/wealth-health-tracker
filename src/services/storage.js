@@ -13,6 +13,7 @@ export function savePortfolio(portfolio) {
         investedAmount: stock.investedAmount,
         purchasePrice: stock.purchasePrice,
         purchaseDate: stock.purchaseDate,
+        monthlyContribution: stock.monthlyContribution || 0,
         addedAt: stock.addedAt,
       })),
       lastUpdated: new Date().toISOString(),

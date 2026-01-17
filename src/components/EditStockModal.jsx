@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { X, Save, DollarSign, Hash, Calendar, TrendingUp, TrendingDown } from 'lucide-react';
+import { X, Save, DollarSign, Hash, Calendar, TrendingUp, TrendingDown, PiggyBank } from 'lucide-react';
 
 export default function EditStockModal({ stock, onClose, onSave }) {
   const [shares, setShares] = useState('');
   const [avgPrice, setAvgPrice] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
+  const [monthlyContribution, setMonthlyContribution] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -13,6 +14,7 @@ export default function EditStockModal({ stock, onClose, onSave }) {
       setShares(calculatedShares.toFixed(4));
       setAvgPrice(stock.purchasePrice?.toFixed(2) || '');
       setPurchaseDate(stock.purchaseDate || '');
+      setMonthlyContribution(stock.monthlyContribution?.toString() || '');
     }
   }, [stock]);
 
@@ -47,6 +49,7 @@ export default function EditStockModal({ stock, onClose, onSave }) {
       purchasePrice: parseFloat(avgPrice),
       investedAmount: parseFloat(shares) * parseFloat(avgPrice),
       purchaseDate: purchaseDate || stock.purchaseDate,
+      monthlyContribution: parseFloat(monthlyContribution) || 0,
     });
 
     onClose();
@@ -136,6 +139,26 @@ export default function EditStockModal({ stock, onClose, onSave }) {
               max={new Date().toISOString().split('T')[0]}
               className="glass-input w-full"
             />
+          </div>
+
+          {/* Monthly Contribution */}
+          <div>
+            <label className="block text-sm font-medium text-silver mb-2">
+              <PiggyBank className="inline w-4 h-4 mr-1" />
+              Monthly Contribution ($)
+            </label>
+            <input
+              type="number"
+              value={monthlyContribution}
+              onChange={(e) => setMonthlyContribution(e.target.value)}
+              placeholder="500"
+              min="0"
+              step="50"
+              className="glass-input w-full"
+            />
+            <p className="text-xs text-steel mt-1">
+              Amount you plan to invest monthly in this stock. Used for growth projections.
+            </p>
           </div>
 
           {/* Live Calculation Preview */}

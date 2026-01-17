@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, ToggleLeft, ToggleRight } from 'lucide-react';
+import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, PiggyBank } from 'lucide-react';
 import { searchStocks, fetchStockQuote } from '../services/stockApi';
 
 export default function AddStockModal({ isOpen, onClose, onAdd }) {
@@ -11,6 +11,7 @@ export default function AddStockModal({ isOpen, onClose, onAdd }) {
   const [avgPrice, setAvgPrice] = useState('');
   const [investedAmount, setInvestedAmount] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
+  const [monthlyContribution, setMonthlyContribution] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [currentPrice, setCurrentPrice] = useState(0);
@@ -111,6 +112,7 @@ export default function AddStockModal({ isOpen, onClose, onAdd }) {
       investedAmount: finalInvested,
       purchasePrice: finalAvgPrice,
       purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+      monthlyContribution: parseFloat(monthlyContribution) || 0,
       addedAt: new Date().toISOString(),
     });
 
@@ -125,6 +127,7 @@ export default function AddStockModal({ isOpen, onClose, onAdd }) {
     setAvgPrice('');
     setInvestedAmount('');
     setPurchaseDate('');
+    setMonthlyContribution('');
     setSearchQuery('');
     setCurrentPrice(0);
     setError('');
@@ -343,6 +346,26 @@ export default function AddStockModal({ isOpen, onClose, onAdd }) {
               </div>
             </>
           )}
+
+          {/* Monthly Contribution */}
+          <div>
+            <label className="block text-sm font-medium text-silver mb-2">
+              <PiggyBank className="inline w-4 h-4 mr-1" />
+              Monthly Contribution ($)
+            </label>
+            <input
+              type="number"
+              value={monthlyContribution}
+              onChange={(e) => setMonthlyContribution(e.target.value)}
+              placeholder="500"
+              min="0"
+              step="50"
+              className="glass-input w-full"
+            />
+            <p className="text-xs text-steel mt-1">
+              Planned monthly investment for growth projections
+            </p>
+          </div>
 
           {/* Purchase Date */}
           <div>
