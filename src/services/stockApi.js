@@ -111,6 +111,116 @@ export async function searchStocks(query) {
   }
 }
 
+export async function fetchQuarterlyEarnings(symbol) {
+  try {
+    // Fetch earnings data from Yahoo Finance
+    const url = `${CORS_PROXY}${encodeURIComponent(
+      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=earnings,earningsHistory,earningsTrend,financialData,defaultKeyStatistics`
+    )}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    const result = data.quoteSummary?.result?.[0];
+    if (!result) {
+      throw new Error(`No earnings data found for ${symbol}`);
+    }
+
+    const earnings = result.earnings || {};
+    const earningsHistory = result.earningsHistory?.history || [];
+    const earningsTrend = result.earningsTrend?.trend || [];
+    const financialData = result.financialData || {};
+    const keyStats = result.defaultKeyStatistics || {};
+
+    // Get quarterly earnings (last 4 quarters)
+    const quarterlyEarnings = (earnings.earningsChart?.quarterly || []).map(q => ({
+      quarter: q.date,
+      actual: q.actual?.raw || 0,
+      estimate: q.estimate?.raw || 0,
+      surprise: q.actual?.raw && q.estimate?.raw 
+        ? ((q.actual.raw - q.estimate.raw) / Math.abs(q.estimate.raw) * 100).toFixed(1)
+        : 0,
+      beat: q.actual?.raw > q.estimate?.raw,
+    }));
+
+    // Get earnings history with more details
+    const earningsHistoryData = earningsHistory.slice(0, 4).map(eh => ({
+      quarter: eh.quarter?.fmt || '',
+      period: eh.period || '',
+      epsActual: eh.epsActual?.raw || 0,
+      epsEstimate: eh.epsEstimate?.raw || 0,
+      epsDifference: eh.epsDifference?.raw || 0,
+      surprisePercent: eh.surprisePercent?.raw ? (eh.surprisePercent.raw * 100).toFixed(1) : '0',
+    }));
+
+    // Get current quarter and next quarter estimates
+    const currentQuarterEstimate = earningsTrend.find(t => t.period === '0q');
+    const nextQuarterEstimate = earningsTrend.find(t => t.period === '+1q');
+
+    // Financial metrics
+    const metrics = {
+      // Profitability
+      revenue: financialData.totalRevenue?.fmt || 'N/A',
+      revenueRaw: financialData.totalRevenue?.raw || 0,
+      grossMargins: financialData.grossMargins?.fmt || 'N/A',
+      operatingMargins: financialData.operatingMargins?.fmt || 'N/A',
+      profitMargins: financialData.profitMargins?.fmt || 'N/A',
+      
+      // Per Share
+      earningsPerShare: financialData.earningsPerShare?.fmt || earnings.earningsChart?.currentQuarterEstimate?.fmt || 'N/A',
+      revenuePerShare: financialData.revenuePerShare?.fmt || 'N/A',
+      bookValue: keyStats.bookValue?.fmt || 'N/A',
+      
+      // Valuation
+      peRatio: keyStats.forwardPE?.fmt || keyStats.trailingPE?.fmt || 'N/A',
+      pegRatio: keyStats.pegRatio?.fmt || 'N/A',
+      priceToBook: keyStats.priceToBook?.fmt || 'N/A',
+      
+      // Growth
+      earningsGrowth: financialData.earningsGrowth?.fmt || 'N/A',
+      revenueGrowth: financialData.revenueGrowth?.fmt || 'N/A',
+      
+      // Cash & Debt
+      totalCash: financialData.totalCash?.fmt || 'N/A',
+      totalDebt: financialData.totalDebt?.fmt || 'N/A',
+      debtToEquity: financialData.debtToEquity?.fmt || 'N/A',
+      
+      // Returns
+      returnOnEquity: financialData.returnOnEquity?.fmt || 'N/A',
+      returnOnAssets: financialData.returnOnAssets?.fmt || 'N/A',
+      
+      // Dividend
+      dividendYield: keyStats.dividendYield?.fmt || 'N/A',
+      dividendRate: keyStats.dividendRate?.fmt || 'N/A',
+    };
+
+    return {
+      symbol: symbol.toUpperCase(),
+      quarterlyEarnings,
+      earningsHistory: earningsHistoryData,
+      estimates: {
+        currentQuarter: currentQuarterEstimate ? {
+          period: currentQuarterEstimate.period,
+          epsEstimate: currentQuarterEstimate.earningsEstimate?.avg?.fmt || 'N/A',
+          revenueEstimate: currentQuarterEstimate.revenueEstimate?.avg?.fmt || 'N/A',
+          growth: currentQuarterEstimate.growth?.fmt || 'N/A',
+        } : null,
+        nextQuarter: nextQuarterEstimate ? {
+          period: nextQuarterEstimate.period,
+          epsEstimate: nextQuarterEstimate.earningsEstimate?.avg?.fmt || 'N/A',
+          revenueEstimate: nextQuarterEstimate.revenueEstimate?.avg?.fmt || 'N/A',
+          growth: nextQuarterEstimate.growth?.fmt || 'N/A',
+        } : null,
+      },
+      metrics,
+      lastUpdated: new Date().toISOString(),
+    };
+  } catch (error) {
+    console.error(`Error fetching earnings for ${symbol}:`, error);
+    return null;
+  }
+}
+
 export async function fetchStockNews(symbols) {
   try {
     // Fetch news for multiple symbols

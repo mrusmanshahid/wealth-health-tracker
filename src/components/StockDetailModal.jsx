@@ -1,9 +1,13 @@
-import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank } from 'lucide-react';
+import { useState } from 'react';
+import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText } from 'lucide-react';
 import PortfolioChart from './PortfolioChart';
 import ContributionGrowthChart from './ContributionGrowthChart';
+import EarningsReport from './EarningsReport';
 import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
 
 export default function StockDetailModal({ stock, onClose }) {
+  const [activeTab, setActiveTab] = useState('overview');
+  
   if (!stock) return null;
 
   const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
@@ -75,131 +79,167 @@ export default function StockDetailModal({ stock, onClose }) {
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="stat-card">
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">
-              <DollarSign className="inline w-3 h-3" /> Invested
-            </p>
-            <p className="font-mono font-semibold text-pearl">
-              ${investedAmount.toLocaleString()}
-            </p>
-          </div>
-          
-          <div className="stat-card">
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">Current Value</p>
-            <p className={`font-mono font-semibold ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-              ${currentValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-          </div>
-          
-          <div className="stat-card">
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">Shares Owned</p>
-            <p className="font-mono font-semibold text-pearl">
-              {shares.toFixed(4)}
-            </p>
-          </div>
-          
-          <div className="stat-card">
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">
-              {isPositive ? 'Gain' : 'Loss'}
-            </p>
-            <p className={`font-mono font-semibold ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-              {isPositive ? '+' : ''}${gain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-          </div>
+        {/* Tabs */}
+        <div className="flex gap-2 mb-6 border-b border-slate-light/30 pb-4">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'overview'
+                ? 'bg-emerald-glow/20 text-emerald-bright'
+                : 'text-steel hover:text-silver hover:bg-slate-light/30'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 inline mr-2" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('earnings')}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === 'earnings'
+                ? 'bg-cyan-500/20 text-cyan-400'
+                : 'text-steel hover:text-silver hover:bg-slate-light/30'
+            }`}
+          >
+            <FileText className="w-4 h-4 inline mr-2" />
+            Financials & Earnings
+          </button>
         </div>
 
-        {/* Performance Metrics */}
-        <div className="glass-card p-4 mb-6 bg-slate-dark/30">
-          <h3 className="text-sm font-semibold text-silver mb-3 uppercase tracking-wide">Performance Metrics</h3>
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div>
-              <p className="text-xs text-steel mb-1">CAGR (10Y)</p>
-              <p className={`font-mono text-lg ${cagr >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                {cagr >= 0 ? '+' : ''}{cagr.toFixed(1)}%
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-steel mb-1">Avg Annual Return</p>
-              <p className={`font-mono text-lg ${annualizedReturn >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                {annualizedReturn >= 0 ? '+' : ''}{annualizedReturn.toFixed(1)}%
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-steel mb-1">Volatility (Annual)</p>
-              <p className="font-mono text-lg text-amber-bright">
-                {annualizedVolatility.toFixed(1)}%
-              </p>
-            </div>
-          </div>
-          
-          {/* Growth Rate Comparison */}
-          <div className="pt-4 border-t border-slate-light/20">
-            <h4 className="text-xs text-steel mb-3 uppercase tracking-wide">Annual Growth Rates</h4>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center p-3 rounded-lg bg-emerald-glow/10">
-                <p className="text-xs text-steel mb-1">Recent (1Y)</p>
-                <p className={`font-mono text-lg ${recentGrowthRate >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                  {recentGrowthRate >= 0 ? '+' : ''}{recentGrowthRate.toFixed(1)}%
+        {/* Overview Tab */}
+        {activeTab === 'overview' && (
+          <>
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              <div className="stat-card">
+                <p className="text-xs text-steel uppercase tracking-wide mb-1">
+                  <DollarSign className="inline w-3 h-3" /> Invested
+                </p>
+                <p className="font-mono font-semibold text-pearl">
+                  ${investedAmount.toLocaleString()}
                 </p>
               </div>
-              <div className="text-center p-3 rounded-lg bg-sapphire/10">
-                <p className="text-xs text-steel mb-1">5Y Average</p>
-                <p className={`font-mono text-lg ${fiveYearGrowthRate >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
-                  {fiveYearGrowthRate >= 0 ? '+' : ''}{fiveYearGrowthRate.toFixed(1)}%
+              
+              <div className="stat-card">
+                <p className="text-xs text-steel uppercase tracking-wide mb-1">Current Value</p>
+                <p className={`font-mono font-semibold ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                  ${currentValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </p>
               </div>
-              <div className="text-center p-3 rounded-lg bg-violet/10">
-                <p className="text-xs text-steel mb-1">10Y Average</p>
-                <p className={`font-mono text-lg ${tenYearGrowthRate >= 0 ? 'text-violet-bright' : 'text-ruby-bright'}`}>
-                  {tenYearGrowthRate >= 0 ? '+' : ''}{tenYearGrowthRate.toFixed(1)}%
+              
+              <div className="stat-card">
+                <p className="text-xs text-steel uppercase tracking-wide mb-1">Shares Owned</p>
+                <p className="font-mono font-semibold text-pearl">
+                  {shares.toFixed(4)}
+                </p>
+              </div>
+              
+              <div className="stat-card">
+                <p className="text-xs text-steel uppercase tracking-wide mb-1">
+                  {isPositive ? 'Gain' : 'Loss'}
+                </p>
+                <p className={`font-mono font-semibold ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                  {isPositive ? '+' : ''}${gain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </p>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Historical Chart */}
-        <div className="mb-6">
-          <PortfolioChart stock={stock} showForecast={true} />
-        </div>
+            {/* Performance Metrics */}
+            <div className="glass-card p-4 mb-6 bg-slate-dark/30">
+              <h3 className="text-sm font-semibold text-silver mb-3 uppercase tracking-wide">Performance Metrics</h3>
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                  <p className="text-xs text-steel mb-1">CAGR (10Y)</p>
+                  <p className={`font-mono text-lg ${cagr >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                    {cagr >= 0 ? '+' : ''}{cagr.toFixed(1)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-steel mb-1">Avg Annual Return</p>
+                  <p className={`font-mono text-lg ${annualizedReturn >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                    {annualizedReturn >= 0 ? '+' : ''}{annualizedReturn.toFixed(1)}%
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-steel mb-1">Volatility (Annual)</p>
+                  <p className="font-mono text-lg text-amber-bright">
+                    {annualizedVolatility.toFixed(1)}%
+                  </p>
+                </div>
+              </div>
+              
+              {/* Growth Rate Comparison */}
+              <div className="pt-4 border-t border-slate-light/20">
+                <h4 className="text-xs text-steel mb-3 uppercase tracking-wide">Annual Growth Rates</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-3 rounded-lg bg-emerald-glow/10">
+                    <p className="text-xs text-steel mb-1">Recent (1Y)</p>
+                    <p className={`font-mono text-lg ${recentGrowthRate >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                      {recentGrowthRate >= 0 ? '+' : ''}{recentGrowthRate.toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-sapphire/10">
+                    <p className="text-xs text-steel mb-1">5Y Average</p>
+                    <p className={`font-mono text-lg ${fiveYearGrowthRate >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
+                      {fiveYearGrowthRate >= 0 ? '+' : ''}{fiveYearGrowthRate.toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="text-center p-3 rounded-lg bg-violet/10">
+                    <p className="text-xs text-steel mb-1">10Y Average</p>
+                    <p className={`font-mono text-lg ${tenYearGrowthRate >= 0 ? 'text-violet-bright' : 'text-ruby-bright'}`}>
+                      {tenYearGrowthRate >= 0 ? '+' : ''}{tenYearGrowthRate.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-        {/* Monthly Contribution Growth Chart */}
-        {stock.monthlyContribution > 0 && (
-          <div className="glass-card p-4 mb-6 bg-slate-dark/30">
-            <div className="flex items-center justify-between mb-4">
+            {/* Historical Chart */}
+            <div className="mb-6">
+              <PortfolioChart stock={stock} showForecast={true} />
+            </div>
+
+            {/* Monthly Contribution Growth Chart */}
+            {stock.monthlyContribution > 0 && (
+              <div className="glass-card p-4 mb-6 bg-slate-dark/30">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <PiggyBank className="w-5 h-5 text-amber-bright" />
+                    <h3 className="text-sm font-semibold text-silver uppercase tracking-wide">
+                      Monthly Contribution Growth (${stock.monthlyContribution}/mo)
+                    </h3>
+                  </div>
+                </div>
+                <ContributionGrowthChart 
+                  stock={stock} 
+                  monthlyContribution={stock.monthlyContribution}
+                  fullWidth={true}
+                />
+              </div>
+            )}
+
+            {/* Purchase Info */}
+            <div className="pt-4 border-t border-slate-light/30 flex flex-wrap items-center gap-4 text-sm text-steel">
               <div className="flex items-center gap-2">
-                <PiggyBank className="w-5 h-5 text-amber-bright" />
-                <h3 className="text-sm font-semibold text-silver uppercase tracking-wide">
-                  Monthly Contribution Growth (${stock.monthlyContribution}/mo)
-                </h3>
+                <Calendar className="w-4 h-4" />
+                Purchased: {stock.purchaseDate || 'Not specified'}
               </div>
+              <div>
+                @ ${stock.purchasePrice.toFixed(2)}/share
+              </div>
+              {stock.monthlyContribution > 0 && (
+                <div className="flex items-center gap-2">
+                  <PiggyBank className="w-4 h-4" />
+                  ${stock.monthlyContribution}/mo contribution
+                </div>
+              )}
             </div>
-            <ContributionGrowthChart 
-              stock={stock} 
-              monthlyContribution={stock.monthlyContribution}
-              fullWidth={true}
-            />
-          </div>
+          </>
         )}
 
-        {/* Purchase Info */}
-        <div className="pt-4 border-t border-slate-light/30 flex flex-wrap items-center gap-4 text-sm text-steel">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            Purchased: {stock.purchaseDate || 'Not specified'}
-          </div>
-          <div>
-            @ ${stock.purchasePrice.toFixed(2)}/share
-          </div>
-          {stock.monthlyContribution > 0 && (
-            <div className="flex items-center gap-2">
-              <PiggyBank className="w-4 h-4" />
-              ${stock.monthlyContribution}/mo contribution
-            </div>
-          )}
-        </div>
+        {/* Earnings Tab */}
+        {activeTab === 'earnings' && (
+          <EarningsReport symbol={stock.symbol} />
+        )}
       </div>
     </div>
   );
