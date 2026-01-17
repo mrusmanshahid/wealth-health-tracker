@@ -66,9 +66,19 @@ export default function EarningsReport({ symbol, onClose }) {
   if (error) {
     return (
       <div className="bg-slate-800/60 backdrop-blur-xl rounded-2xl border border-slate-700/50 p-6">
-        <div className="flex items-center justify-center gap-3 py-8 text-slate-400">
-          <AlertCircle className="w-5 h-5" />
+        <div className="flex flex-col items-center justify-center gap-3 py-8 text-slate-400">
+          <AlertCircle className="w-8 h-8 text-amber-400" />
           <span>{error}</span>
+          <button 
+            onClick={loadEarnings}
+            className="mt-2 px-4 py-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-sm transition-colors flex items-center gap-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            Retry
+          </button>
+          <p className="text-xs text-slate-500 mt-2 text-center max-w-sm">
+            Note: ETFs and some international stocks may not have earnings data available
+          </p>
         </div>
       </div>
     );

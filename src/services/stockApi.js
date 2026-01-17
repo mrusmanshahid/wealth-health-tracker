@@ -113,18 +113,47 @@ export async function searchStocks(query) {
 
 export async function fetchQuarterlyEarnings(symbol) {
   try {
-    // Fetch earnings data from Yahoo Finance
-    const url = `${CORS_PROXY}${encodeURIComponent(
-      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=earnings,earningsHistory,earningsTrend,financialData,defaultKeyStatistics`
+    // Fetch earnings data from Yahoo Finance using multiple module requests
+    const modules = 'earnings,earningsHistory,earningsTrend,financialData,defaultKeyStatistics,summaryDetail';
+    
+    // Try query2 endpoint first (more reliable)
+    let url = `${CORS_PROXY}${encodeURIComponent(
+      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=${modules}`
     )}`;
     
-    const response = await fetch(url);
+    console.log('Fetching earnings for:', symbol);
+    let response = await fetch(url);
+    
+    // Fallback to query1 if query2 fails
+    if (!response.ok) {
+      console.log('query2 failed, trying query1...');
+      url = `${CORS_PROXY}${encodeURIComponent(
+        `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=${modules}`
+      )}`;
+      response = await fetch(url);
+    }
+    
+    if (!response.ok) {
+      console.error('Response not OK:', response.status, response.statusText);
+      throw new Error(`HTTP error: ${response.status}`);
+    }
+    
     const data = await response.json();
+    console.log('Earnings API response:', data);
+    
+    // Check for API error
+    if (data.quoteSummary?.error) {
+      console.error('API Error:', data.quoteSummary.error);
+      throw new Error(data.quoteSummary.error.description || 'API error');
+    }
     
     const result = data.quoteSummary?.result?.[0];
     if (!result) {
+      console.error('No result in response');
       throw new Error(`No earnings data found for ${symbol}`);
     }
+    
+    console.log('Earnings result modules:', Object.keys(result));
 
     const earnings = result.earnings || {};
     const earningsHistory = result.earningsHistory?.history || [];
