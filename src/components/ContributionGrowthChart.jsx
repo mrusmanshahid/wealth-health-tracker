@@ -19,23 +19,57 @@ export default function ContributionGrowthChart({ stock, monthlyContribution, fu
     const history = stock.history;
     const currentPrice = stock.currentPrice || history[history.length - 1]?.price || 0;
     
-    // Calculate different growth rates
+    const MIN_RATE = -0.15; // -15% annual floor
+    const MAX_RATE = 0.35;  // 35% annual cap
+    
+    // Helper to calculate bounded CAGR
+    const calcBoundedCAGR = (startPrice, endPrice, months) => {
+      if (startPrice <= 0 || endPrice <= 0 || months <= 0) return 0.08;
+      const rate = Math.pow(endPrice / startPrice, 12 / months) - 1;
+      return Math.max(MIN_RATE, Math.min(MAX_RATE, rate));
+    };
+    
+    // Helper to calculate median monthly returns
+    const calcMedianGrowth = (data) => {
+      if (data.length < 2) return 0.08;
+      
+      const monthlyReturns = [];
+      for (let i = 1; i < data.length; i++) {
+        if (data[i - 1].price > 0) {
+          const ret = (data[i].price - data[i - 1].price) / data[i - 1].price;
+          if (ret > -0.20 && ret < 0.20) monthlyReturns.push(ret);
+        }
+      }
+      
+      if (monthlyReturns.length === 0) return 0.08;
+      monthlyReturns.sort((a, b) => a - b);
+      const mid = Math.floor(monthlyReturns.length / 2);
+      const median = monthlyReturns.length % 2 === 0
+        ? (monthlyReturns[mid - 1] + monthlyReturns[mid]) / 2
+        : monthlyReturns[mid];
+      
+      return Math.max(MIN_RATE, Math.min(MAX_RATE, median * 12));
+    };
+    
+    // Calculate different growth rates with outlier protection
     // 1. Recent growth (last 12 months)
     const recent12 = history.slice(-12);
-    const recentGrowthRate = recent12.length >= 2 
-      ? Math.pow(recent12[recent12.length - 1].price / recent12[0].price, 1 / (recent12.length / 12)) - 1
-      : 0;
+    const recentGrowthRate = calcMedianGrowth(recent12);
     
-    // 2. 5-year average growth
+    // 2. 5-year average growth (blend CAGR and median)
     const recent60 = history.slice(-60);
-    const fiveYearGrowthRate = recent60.length >= 12
-      ? Math.pow(recent60[recent60.length - 1].price / recent60[0].price, 1 / (recent60.length / 12)) - 1
+    const fiveYearCAGR = recent60.length >= 12
+      ? calcBoundedCAGR(recent60[0].price, recent60[recent60.length - 1].price, recent60.length)
       : recentGrowthRate;
+    const fiveYearMedian = calcMedianGrowth(recent60);
+    const fiveYearGrowthRate = Math.max(MIN_RATE, Math.min(MAX_RATE, fiveYearCAGR * 0.4 + fiveYearMedian * 0.6));
     
-    // 3. 10-year average growth (full history)
-    const tenYearGrowthRate = history.length >= 12
-      ? Math.pow(history[history.length - 1].price / history[0].price, 1 / (history.length / 12)) - 1
+    // 3. 10-year average growth (blend CAGR and median)
+    const tenYearCAGR = history.length >= 12
+      ? calcBoundedCAGR(history[0].price, history[history.length - 1].price, history.length)
       : fiveYearGrowthRate;
+    const tenYearMedian = calcMedianGrowth(history);
+    const tenYearGrowthRate = Math.max(MIN_RATE, Math.min(MAX_RATE, tenYearCAGR * 0.4 + tenYearMedian * 0.6));
 
     // Project 5 years (60 months)
     const projectionMonths = 60;

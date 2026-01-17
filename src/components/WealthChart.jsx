@@ -13,38 +13,81 @@ import {
 import { format, addMonths } from 'date-fns';
 
 export default function WealthChart({ wealthData, monthlyContribution, stocks }) {
-  // Calculate growth rates from historical data
+  // Calculate growth rates from historical data with outlier protection
   const growthRates = useMemo(() => {
+    const DEFAULT_RATES = { recent: 0.08, fiveYear: 0.10, tenYear: 0.10 };
+    const MIN_RATE = -0.15; // Cap at -15% annual
+    const MAX_RATE = 0.35;  // Cap at 35% annual (very high but possible for growth stocks)
+    
     if (!wealthData || wealthData.length < 12) {
-      return { recent: 0.08, fiveYear: 0.10, tenYear: 0.12 }; // defaults
+      return DEFAULT_RATES;
     }
 
     const historicalData = wealthData.filter(d => !d.isForecast && d.value > 0);
     if (historicalData.length < 12) {
-      return { recent: 0.08, fiveYear: 0.10, tenYear: 0.12 };
+      return DEFAULT_RATES;
     }
 
-    // Recent (last 12 months)
+    // Helper to calculate CAGR with bounds
+    const calcBoundedCAGR = (startValue, endValue, periods) => {
+      if (startValue <= 0 || endValue <= 0 || periods <= 0) return 0.08;
+      const rate = Math.pow(endValue / startValue, 12 / periods) - 1;
+      return Math.max(MIN_RATE, Math.min(MAX_RATE, rate));
+    };
+
+    // Helper to calculate median monthly returns (more robust to outliers)
+    const calcMedianGrowth = (data) => {
+      if (data.length < 2) return 0.08;
+      
+      const monthlyReturns = [];
+      for (let i = 1; i < data.length; i++) {
+        if (data[i - 1].value > 0) {
+          const monthlyReturn = (data[i].value - data[i - 1].value) / data[i - 1].value;
+          // Filter extreme monthly moves (> 20% monthly is likely an outlier or contribution)
+          if (monthlyReturn > -0.20 && monthlyReturn < 0.20) {
+            monthlyReturns.push(monthlyReturn);
+          }
+        }
+      }
+      
+      if (monthlyReturns.length === 0) return 0.08;
+      
+      // Get median
+      monthlyReturns.sort((a, b) => a - b);
+      const mid = Math.floor(monthlyReturns.length / 2);
+      const medianMonthly = monthlyReturns.length % 2 === 0
+        ? (monthlyReturns[mid - 1] + monthlyReturns[mid]) / 2
+        : monthlyReturns[mid];
+      
+      // Annualize and bound
+      const annualRate = medianMonthly * 12;
+      return Math.max(MIN_RATE, Math.min(MAX_RATE, annualRate));
+    };
+
+    // Recent (last 12 months) - use median for stability
     const recent12 = historicalData.slice(-12);
-    const recentRate = recent12.length >= 2 && recent12[0].value > 0
-      ? Math.pow(recent12[recent12.length - 1].value / recent12[0].value, 12 / recent12.length) - 1
-      : 0.08;
+    const recentRate = calcMedianGrowth(recent12);
 
-    // 5-year (last 60 months)
+    // 5-year (last 60 months) - blend CAGR and median
     const recent60 = historicalData.slice(-60);
-    const fiveYearRate = recent60.length >= 12 && recent60[0].value > 0
-      ? Math.pow(recent60[recent60.length - 1].value / recent60[0].value, 12 / recent60.length) - 1
+    const fiveYearCAGR = recent60.length >= 12 
+      ? calcBoundedCAGR(recent60[0].value, recent60[recent60.length - 1].value, recent60.length)
       : recentRate;
+    const fiveYearMedian = calcMedianGrowth(recent60);
+    const fiveYearRate = (fiveYearCAGR * 0.4 + fiveYearMedian * 0.6); // Weight median more
 
-    // 10-year (full history)
-    const tenYearRate = historicalData.length >= 12 && historicalData[0].value > 0
-      ? Math.pow(historicalData[historicalData.length - 1].value / historicalData[0].value, 12 / historicalData.length) - 1
+    // 10-year (full history) - blend CAGR and median
+    const tenYearCAGR = historicalData.length >= 12
+      ? calcBoundedCAGR(historicalData[0].value, historicalData[historicalData.length - 1].value, historicalData.length)
       : fiveYearRate;
+    const tenYearMedian = calcMedianGrowth(historicalData);
+    const tenYearRate = (tenYearCAGR * 0.4 + tenYearMedian * 0.6);
 
+    // Apply weighted blend for final rates (recent gets less weight for long-term projection)
     return {
-      recent: recentRate,
-      fiveYear: fiveYearRate,
-      tenYear: tenYearRate,
+      recent: Math.max(MIN_RATE, Math.min(MAX_RATE, recentRate)),
+      fiveYear: Math.max(MIN_RATE, Math.min(MAX_RATE, fiveYearRate)),
+      tenYear: Math.max(MIN_RATE, Math.min(MAX_RATE, tenYearRate)),
     };
   }, [wealthData]);
 
