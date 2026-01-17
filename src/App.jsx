@@ -5,6 +5,7 @@ import Header from './components/Header';
 import StatsCards from './components/StatsCards';
 import StockCard from './components/StockCard';
 import WealthChart from './components/WealthChart';
+import NewsSection from './components/NewsSection';
 import AddStockModal from './components/AddStockModal';
 import EditStockModal from './components/EditStockModal';
 import SettingsPanel from './components/SettingsPanel';
@@ -287,6 +288,9 @@ function App() {
                 ))}
               </div>
             </div>
+
+            {/* News Section */}
+            <NewsSection symbols={stocks.map(s => s.symbol)} />
           </>
         )}
 

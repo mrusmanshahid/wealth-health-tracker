@@ -110,3 +110,49 @@ export async function searchStocks(query) {
   }
 }
 
+export async function fetchStockNews(symbols) {
+  try {
+    // Fetch news for multiple symbols
+    const newsPromises = symbols.slice(0, 5).map(async (symbol) => {
+      try {
+        const url = `${CORS_PROXY}${encodeURIComponent(
+          `https://query1.finance.yahoo.com/v1/finance/search?q=${symbol}&quotesCount=0&newsCount=5`
+        )}`;
+        
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        return (data.news || []).map(article => ({
+          ...article,
+          relatedSymbol: symbol,
+        }));
+      } catch (err) {
+        console.error(`News fetch error for ${symbol}:`, err);
+        return [];
+      }
+    });
+    
+    const allNews = await Promise.all(newsPromises);
+    const flatNews = allNews.flat();
+    
+    // Remove duplicates by title and sort by publish time
+    const uniqueNews = [];
+    const seenTitles = new Set();
+    
+    for (const article of flatNews) {
+      if (!seenTitles.has(article.title)) {
+        seenTitles.add(article.title);
+        uniqueNews.push(article);
+      }
+    }
+    
+    // Sort by publish time (newest first)
+    uniqueNews.sort((a, b) => (b.providerPublishTime || 0) - (a.providerPublishTime || 0));
+    
+    return uniqueNews.slice(0, 10);
+  } catch (error) {
+    console.error('News fetch error:', error);
+    return [];
+  }
+}
+
