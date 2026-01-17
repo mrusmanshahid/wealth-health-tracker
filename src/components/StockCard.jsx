@@ -1,5 +1,6 @@
 import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit3, PiggyBank } from 'lucide-react';
 import ContributionGrowthChart from './ContributionGrowthChart';
+import { formatCurrency } from '../services/currencyApi';
 
 export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
   const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
@@ -20,12 +21,25 @@ export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
   const priceChange = currentPrice - stock.purchasePrice;
   const priceChangePercent = (priceChange / stock.purchasePrice) * 100;
 
+  // Check if non-USD currency
+  const isNonUSD = stock.currency && stock.currency !== 'USD';
+  const currencySymbols = {
+    EUR: '€', GBP: '£', JPY: '¥', CHF: 'CHF', CAD: 'C$', AUD: 'A$',
+    INR: '₹', CNY: '¥', HKD: 'HK$', SGD: 'S$', SEK: 'kr', NOK: 'kr',
+  };
+  const currencySymbol = currencySymbols[stock.currency] || stock.currency;
+
   return (
     <div className="glass-card p-5 hover:border-emerald-glow/30 transition-all duration-300 group">
       <div className="flex items-start justify-between mb-4">
         <div>
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold text-emerald-bright">{stock.symbol}</span>
+            {isNonUSD && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-amber/20 text-amber-bright">
+                {stock.currency}
+              </span>
+            )}
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               isPositive ? 'bg-emerald-glow/20 text-emerald-bright' : 'bg-ruby/20 text-ruby-bright'
             }`}>
@@ -70,19 +84,26 @@ export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
           </p>
         </div>
         <div>
-          <p className="text-xs text-steel uppercase tracking-wide mb-1">Avg Cost</p>
+          <p className="text-xs text-steel uppercase tracking-wide mb-1">Avg Cost (USD)</p>
           <p className="font-mono text-silver">
             ${stock.purchasePrice.toFixed(2)}
           </p>
         </div>
         <div>
           <p className="text-xs text-steel uppercase tracking-wide mb-1">Current Price</p>
-          <p className="font-mono text-pearl flex items-center gap-1">
-            ${currentPrice.toFixed(2)}
-            <span className={`text-xs ${priceChange >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-              ({priceChange >= 0 ? '+' : ''}{priceChangePercent.toFixed(1)}%)
-            </span>
-          </p>
+          <div>
+            {isNonUSD && stock.currentPriceOriginal && (
+              <p className="font-mono text-amber-bright text-sm">
+                {currencySymbol}{stock.currentPriceOriginal.toFixed(2)}
+              </p>
+            )}
+            <p className="font-mono text-pearl flex items-center gap-1">
+              ${currentPrice.toFixed(2)}
+              <span className={`text-xs ${priceChange >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                ({priceChange >= 0 ? '+' : ''}{priceChangePercent.toFixed(1)}%)
+              </span>
+            </p>
+          </div>
         </div>
         <div>
           <p className="text-xs text-steel uppercase tracking-wide mb-1">Market Value</p>
@@ -92,11 +113,20 @@ export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
         </div>
       </div>
 
+      {/* Exchange Rate Info for non-USD */}
+      {isNonUSD && stock.exchangeRate && (
+        <div className="mb-4 p-2 rounded-lg bg-amber/10 border border-amber/20">
+          <p className="text-xs text-amber-bright">
+            Exchange rate: 1 {stock.currency} = ${stock.exchangeRate.toFixed(4)} USD
+          </p>
+        </div>
+      )}
+
       {/* P&L Section */}
       <div className="p-3 rounded-lg bg-gradient-to-r from-slate-dark/50 to-obsidian/50 border border-slate-light/10 mb-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">Unrealized P&L</p>
+            <p className="text-xs text-steel uppercase tracking-wide mb-1">Unrealized P&L (USD)</p>
             <div className="flex items-center gap-2">
               <p className={`font-mono font-bold text-lg ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
                 {isPositive ? '+' : ''}${gain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -120,7 +150,7 @@ export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
 
       {/* Cost Basis */}
       <div className="flex items-center justify-between text-sm mb-4">
-        <span className="text-steel">Cost Basis</span>
+        <span className="text-steel">Cost Basis (USD)</span>
         <span className="font-mono text-silver">${investedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
       </div>
 
@@ -128,7 +158,7 @@ export default function StockCard({ stock, onRemove, onViewChart, onEdit }) {
       <div className="pt-4 border-t border-slate-light/30">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">5Y Forecast</p>
+            <p className="text-xs text-steel uppercase tracking-wide mb-1">5Y Forecast (USD)</p>
             <p className={`font-mono font-semibold ${projectedGain >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
               ${projectedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>

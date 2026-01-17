@@ -16,6 +16,7 @@ import { fetchStockHistory } from './services/stockApi';
 import { savePortfolio, loadPortfolio, saveSettings, loadSettings } from './services/storage';
 import { generateForecast, calculateWealthGrowth, calculatePortfolioMetrics } from './utils/forecasting';
 import { generateDemoPortfolio } from './utils/demoData';
+import { convertToUSD, getExchangeRate, fetchExchangeRates } from './services/currencyApi';
 
 function App() {
   const [stocks, setStocks] = useState([]);
@@ -86,19 +87,40 @@ function App() {
   }, [stocks, settings]);
 
   const refreshStockData = async (portfolioStocks) => {
+    // Ensure we have fresh exchange rates
+    await fetchExchangeRates();
+    
     const updatedStocks = await Promise.all(
       portfolioStocks.map(async (stock) => {
         try {
           const data = await fetchStockHistory(stock.symbol, 10);
           const { forecast, confidence } = generateForecast(data.history, 60);
           
+          const currency = data.currency || 'USD';
+          const exchangeRate = getExchangeRate(currency);
+          
+          // Convert prices to USD for calculations
+          const currentPriceUSD = convertToUSD(data.currentPrice, currency);
+          const historyUSD = data.history.map(h => ({
+            ...h,
+            priceOriginal: h.price,
+            price: convertToUSD(h.price, currency),
+          }));
+          
+          // Regenerate forecast with USD prices
+          const { forecast: forecastUSD, confidence: confidenceUSD } = generateForecast(historyUSD, 60);
+          
           return {
             ...stock,
             name: data.name || stock.name,
-            currentPrice: data.currentPrice,
-            history: data.history,
-            forecast,
-            confidence,
+            currency,
+            exchangeRate,
+            currentPriceOriginal: data.currentPrice,
+            currentPrice: currentPriceUSD,
+            historyOriginal: data.history,
+            history: historyUSD,
+            forecast: forecastUSD,
+            confidence: confidenceUSD,
           };
         } catch (err) {
           console.error(`Failed to fetch ${stock.symbol}:`, err);
@@ -130,14 +152,38 @@ function App() {
   const handleAddStock = async (newStock) => {
     setIsRefreshing(true);
     try {
+      await fetchExchangeRates();
       const data = await fetchStockHistory(newStock.symbol, 10);
-      const { forecast, confidence } = generateForecast(data.history, 60);
+      
+      const currency = data.currency || 'USD';
+      const exchangeRate = getExchangeRate(currency);
+      
+      // Convert prices to USD
+      const currentPriceUSD = convertToUSD(data.currentPrice, currency);
+      const historyUSD = data.history.map(h => ({
+        ...h,
+        priceOriginal: h.price,
+        price: convertToUSD(h.price, currency),
+      }));
+      
+      const { forecast, confidence } = generateForecast(historyUSD, 60);
+      
+      // Convert user's purchase price to USD if needed
+      const purchasePriceUSD = newStock.currency === currency 
+        ? convertToUSD(newStock.purchasePrice, currency)
+        : newStock.purchasePrice; // Assume user entered in USD if currency doesn't match
       
       const stockWithData = {
         ...newStock,
         name: data.name || newStock.name,
-        currentPrice: data.currentPrice,
-        history: data.history,
+        currency,
+        exchangeRate,
+        currentPriceOriginal: data.currentPrice,
+        currentPrice: currentPriceUSD,
+        purchasePriceOriginal: newStock.purchasePrice,
+        purchasePrice: purchasePriceUSD,
+        historyOriginal: data.history,
+        history: historyUSD,
         forecast,
         confidence,
       };
