@@ -48,37 +48,45 @@ export default function QuickStockView({
     setIsLoading(true);
     setIsLoadingHistory(true);
     
+    // Fetch quote first
     try {
-      // Fetch quote and history in parallel
-      const [quoteData, historyData] = await Promise.all([
-        fetchStockQuote(stock.symbol),
-        fetchStockHistory(stock.symbol)
-      ]);
-      
+      const quoteData = await fetchStockQuote(stock.symbol);
       setQuote(quoteData);
+      setIsLoading(false);
+    } catch (err) {
+      console.error('Error loading quote:', err);
+      setIsLoading(false);
+    }
+    
+    // Then fetch history for the chart
+    try {
+      const historyResponse = await fetchStockHistory(stock.symbol);
       
-      // Build stock object with history for the chart
-      if (historyData && historyData.length > 0) {
-        const currentPrice = quoteData?.price || historyData[historyData.length - 1]?.price || stock.price;
+      // fetchStockHistory returns { symbol, name, currency, currentPrice, history }
+      const historyData = historyResponse?.history;
+      
+      if (historyData && Array.isArray(historyData) && historyData.length > 0) {
+        const currentPrice = historyResponse.currentPrice || historyData[historyData.length - 1]?.price || stock.price || 100;
         const forecast = generateForecast(historyData, 60);
         
         setStockData({
-          symbol: stock.symbol,
-          name: stock.name || quoteData?.name,
+          symbol: historyResponse.symbol || stock.symbol,
+          name: historyResponse.name || stock.name,
           history: historyData,
           forecast,
           currentPrice,
-          purchasePrice: currentPrice, // For non-portfolio stocks, use current as "purchase"
-          shares: 1, // Default to 1 share for visualization
+          purchasePrice: currentPrice,
+          shares: 1,
           investedAmount: currentPrice,
-          currency: quoteData?.currency || 'USD',
+          currency: historyResponse.currency || 'USD',
         });
+      } else {
+        console.warn('No history data returned for', stock.symbol, historyResponse);
       }
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.error('Error loading history for', stock.symbol, ':', err);
     }
     
-    setIsLoading(false);
     setIsLoadingHistory(false);
   };
 
@@ -238,13 +246,15 @@ export default function QuickStockView({
                 <RefreshCw className="w-6 h-6 text-emerald-bright animate-spin" />
                 <span className="ml-2 text-steel">Loading chart data...</span>
               </div>
-            ) : stockData?.history ? (
+            ) : stockData?.history && stockData.history.length > 0 ? (
               <div className="mb-6">
                 <UnifiedStockChart stock={stockData} monthlyContribution={0} />
               </div>
             ) : (
-              <div className="chart-container h-64 flex items-center justify-center mb-6">
-                <p className="text-steel">Chart data unavailable</p>
+              <div className="chart-container h-48 flex flex-col items-center justify-center mb-6">
+                <BarChart3 className="w-10 h-10 text-steel/50 mb-2" />
+                <p className="text-steel">Historical chart data unavailable</p>
+                <p className="text-xs text-steel/70 mt-1">Try refreshing or check back later</p>
               </div>
             )}
 
