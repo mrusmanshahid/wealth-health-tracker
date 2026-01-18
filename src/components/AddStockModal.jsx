@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, PiggyBank } from 'lucide-react';
+import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, PiggyBank, Wallet } from 'lucide-react';
 import { searchStocks, fetchStockQuote } from '../services/stockApi';
 
-export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock }) {
+export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, availableCash = 0 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
@@ -391,6 +391,32 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock }) 
               className="glass-input w-full"
             />
           </div>
+
+          {/* Available Cash Display */}
+          {availableCash > 0 && selectedStock && (
+            <div className={`p-3 rounded-xl border ${investedNum <= availableCash ? 'border-cyan-500/30 bg-cyan-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Wallet className={`w-4 h-4 ${investedNum <= availableCash ? 'text-cyan-400' : 'text-amber-400'}`} />
+                  <span className="text-sm text-steel">Available Cash:</span>
+                  <span className="font-mono font-semibold text-pearl">${availableCash.toLocaleString()}</span>
+                </div>
+                {investedNum > 0 && (
+                  <div className="text-right">
+                    <span className="text-xs text-steel">After purchase: </span>
+                    <span className={`font-mono font-semibold ${investedNum <= availableCash ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      ${Math.max(0, availableCash - investedNum).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {investedNum > availableCash && investedNum > 0 && (
+                <p className="text-xs text-amber-400 mt-2">
+                  ⚠️ Purchase amount exceeds available cash. You can still proceed, but this won't be deducted from your cash balance.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Live Preview */}
           {selectedStock && calculatedShares > 0 && avgPriceNum > 0 && currentPrice > 0 && (

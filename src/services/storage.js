@@ -3,6 +3,7 @@
 const STORAGE_KEY = 'stock_wealth_tracker_portfolio';
 const SETTINGS_KEY = 'stock_wealth_tracker_settings';
 const WATCHLIST_KEY = 'stock_wealth_tracker_watchlist';
+const CASH_KEY = 'stock_wealth_tracker_cash';
 
 export function savePortfolio(portfolio) {
   try {
@@ -106,6 +107,38 @@ export function loadWatchlist() {
   } catch (error) {
     console.error('Error loading watchlist:', error);
     return [];
+  }
+}
+
+export function saveCashData(cashData) {
+  try {
+    localStorage.setItem(CASH_KEY, JSON.stringify({
+      ...cashData,
+      lastUpdated: new Date().toISOString(),
+    }));
+    return true;
+  } catch (error) {
+    console.error('Error saving cash data:', error);
+    return false;
+  }
+}
+
+export function loadCashData() {
+  try {
+    const data = localStorage.getItem(CASH_KEY);
+    if (!data) {
+      return {
+        balance: 0,
+        transactions: [],
+      };
+    }
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading cash data:', error);
+    return {
+      balance: 0,
+      transactions: [],
+    };
   }
 }
 

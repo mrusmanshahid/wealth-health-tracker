@@ -13,9 +13,10 @@ import StockDetailModal from './components/StockDetailModal';
 import EmptyState from './components/EmptyState';
 import Watchlist from './components/Watchlist';
 import StockDiscovery from './components/StockDiscovery';
+import InvestableCash from './components/InvestableCash';
 
-import { fetchStockHistory, fetchStockQuote } from './services/stockApi';
-import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist } from './services/storage';
+import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks } from './services/stockApi';
+import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist, saveCashData, loadCashData } from './services/storage';
 import { generateForecast, calculateWealthGrowth, calculatePortfolioMetrics } from './utils/forecasting';
 import { generateDemoPortfolio } from './utils/demoData';
 import { convertToUSD, getExchangeRate, fetchExchangeRates } from './services/currencyApi';
@@ -42,6 +43,9 @@ function App() {
   const [error, setError] = useState(null);
   const [watchlist, setWatchlist] = useState([]);
   const [prefillStock, setPrefillStock] = useState(null);
+  const [cashBalance, setCashBalance] = useState(0);
+  const [cashTransactions, setCashTransactions] = useState([]);
+  const [undervaluedStocks, setUndervaluedStocks] = useState([]);
 
   // Load saved data on mount
   useEffect(() => {
@@ -51,12 +55,23 @@ function App() {
         const savedPortfolio = loadPortfolio();
         const savedSettings = loadSettings();
         const savedWatchlist = loadWatchlist();
+        const savedCashData = loadCashData();
         
         setSettings(savedSettings);
         setWatchlist(savedWatchlist);
+        setCashBalance(savedCashData.balance || 0);
+        setCashTransactions(savedCashData.transactions || []);
 
         if (savedPortfolio.length > 0) {
           await refreshStockData(savedPortfolio);
+        }
+
+        // Load undervalued stocks for suggestions
+        try {
+          const undervalued = await fetchUndervaluedStocks();
+          setUndervaluedStocks(undervalued);
+        } catch (err) {
+          console.error('Error loading undervalued stocks:', err);
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -259,6 +274,48 @@ function App() {
   };
 
   const handleAddTransaction = (symbol, transaction) => {
+    // If it's a sell transaction, add proceeds to cash
+    if (transaction.type === 'sell') {
+      const saleProceeds = transaction.shares * transaction.price;
+      const newCashTransaction = {
+        id: Date.now().toString(),
+        type: 'sell',
+        amount: saleProceeds,
+        note: `Sold ${transaction.shares} shares of ${symbol}`,
+        symbol,
+        date: transaction.date || new Date().toISOString(),
+      };
+      
+      const newBalance = cashBalance + saleProceeds;
+      const newCashTransactions = [newCashTransaction, ...cashTransactions];
+      
+      setCashBalance(newBalance);
+      setCashTransactions(newCashTransactions);
+      saveCashData({ balance: newBalance, transactions: newCashTransactions });
+    }
+    
+    // If it's a buy transaction, deduct from cash if available
+    if (transaction.type === 'buy') {
+      const purchaseCost = transaction.shares * transaction.price;
+      if (cashBalance >= purchaseCost) {
+        const newCashTransaction = {
+          id: Date.now().toString(),
+          type: 'buy',
+          amount: purchaseCost,
+          note: `Bought ${transaction.shares} shares of ${symbol}`,
+          symbol,
+          date: transaction.date || new Date().toISOString(),
+        };
+        
+        const newBalance = cashBalance - purchaseCost;
+        const newCashTransactions = [newCashTransaction, ...cashTransactions];
+        
+        setCashBalance(newBalance);
+        setCashTransactions(newCashTransactions);
+        saveCashData({ balance: newBalance, transactions: newCashTransactions });
+      }
+    }
+
     const updatedStocks = stocks.map(s => {
       if (s.symbol === symbol) {
         const transactions = [...(s.transactions || []), transaction];
@@ -385,6 +442,71 @@ function App() {
     setShowAddModal(true);
   };
 
+  // Cash management functions
+  const handleAddCash = (amount, note) => {
+    const newTransaction = {
+      id: Date.now().toString(),
+      type: 'deposit',
+      amount,
+      note,
+      date: new Date().toISOString(),
+    };
+    
+    const newBalance = cashBalance + amount;
+    const newTransactions = [newTransaction, ...cashTransactions];
+    
+    setCashBalance(newBalance);
+    setCashTransactions(newTransactions);
+    saveCashData({ balance: newBalance, transactions: newTransactions });
+  };
+
+  const handleWithdrawCash = (amount, note) => {
+    if (amount > cashBalance) return;
+    
+    const newTransaction = {
+      id: Date.now().toString(),
+      type: 'withdrawal',
+      amount,
+      note,
+      date: new Date().toISOString(),
+    };
+    
+    const newBalance = cashBalance - amount;
+    const newTransactions = [newTransaction, ...cashTransactions];
+    
+    setCashBalance(newBalance);
+    setCashTransactions(newTransactions);
+    saveCashData({ balance: newBalance, transactions: newTransactions });
+  };
+
+  // Update handleAddStock to deduct from cash if available
+  const originalHandleAddStock = handleAddStock;
+  const handleAddStockWithCash = async (newStock) => {
+    const investedAmount = newStock.investedAmount || (newStock.shares * newStock.purchasePrice);
+    
+    // Deduct from cash if we have enough
+    if (cashBalance >= investedAmount) {
+      const newTransaction = {
+        id: Date.now().toString(),
+        type: 'buy',
+        amount: investedAmount,
+        note: `Bought ${newStock.symbol}`,
+        symbol: newStock.symbol,
+        date: new Date().toISOString(),
+      };
+      
+      const newBalance = cashBalance - investedAmount;
+      const newTransactions = [newTransaction, ...cashTransactions];
+      
+      setCashBalance(newBalance);
+      setCashTransactions(newTransactions);
+      saveCashData({ balance: newBalance, transactions: newTransactions });
+    }
+    
+    // Continue with original add stock logic
+    await handleAddStock(newStock);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -429,6 +551,18 @@ function App() {
           <>
             {/* Stats Overview */}
             <StatsCards metrics={metrics} />
+
+            {/* Investable Cash Section */}
+            <InvestableCash
+              cashBalance={cashBalance}
+              cashTransactions={cashTransactions}
+              onAddCash={handleAddCash}
+              onWithdrawCash={handleWithdrawCash}
+              portfolioStocks={stocks}
+              watchlistStocks={watchlist}
+              undervaluedStocks={undervaluedStocks}
+              onBuyStock={handleAddFromDiscovery}
+            />
 
             {/* Main Wealth Chart */}
             <div className="mb-8">
@@ -502,8 +636,9 @@ function App() {
             setShowAddModal(false);
             setPrefillStock(null);
           }}
-          onAdd={handleAddStock}
+          onAdd={handleAddStockWithCash}
           prefillStock={prefillStock}
+          availableCash={cashBalance}
         />
 
         <SettingsPanel
