@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Trash2, BarChart3, Edit3, PiggyBank, PieChart } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, FileText, Edit3, PiggyBank, PieChart } from 'lucide-react';
 import ContributionGrowthChart from './ContributionGrowthChart';
 import { formatCurrency } from '../services/currencyApi';
 
@@ -68,10 +68,10 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
           </button>
           <button
             onClick={() => onViewChart(stock)}
-            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-sapphire-bright"
-            title="View Chart"
+            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-cyan-400"
+            title="View Details"
           >
-            <BarChart3 className="w-4 h-4" />
+            <FileText className="w-4 h-4" />
           </button>
           <button
             onClick={() => onRemove(stock.symbol)}
