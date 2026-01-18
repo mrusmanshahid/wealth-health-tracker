@@ -62,45 +62,65 @@ export async function fetchStockHistory(symbol, years = 10) {
 }
 
 export async function fetchStockQuote(symbol) {
+  // Helper to parse quote response
+  const parseQuoteResponse = (quote) => ({
+    symbol: quote.symbol || symbol.toUpperCase(),
+    name: quote.longName || quote.shortName || symbol,
+    price: quote.regularMarketPrice || 0,
+    previousClose: quote.regularMarketPreviousClose || 0,
+    change: quote.regularMarketChange || 0,
+    changePercent: quote.regularMarketChangePercent || 0,
+    currency: quote.currency || 'USD',
+    dayHigh: quote.regularMarketDayHigh || 0,
+    dayLow: quote.regularMarketDayLow || 0,
+    fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh || 0,
+    fiftyTwoWeekLow: quote.fiftyTwoWeekLow || 0,
+    volume: quote.regularMarketVolume || 0,
+    avgVolume: quote.averageDailyVolume10Day || quote.averageDailyVolume3Month || 0,
+    marketCap: quote.marketCap || 0,
+    peRatio: quote.trailingPE || quote.forwardPE || 0,
+    exchange: quote.exchange || '',
+    quoteType: quote.quoteType || '',
+  });
+  
   try {
-    // Use the v6 quote endpoint which has more comprehensive data
-    const quoteUrl = `${CORS_PROXY}${encodeURIComponent(
+    // Try v7 quote endpoint first (most reliable for comprehensive data)
+    const v7Url = `${CORS_PROXY}${encodeURIComponent(
+      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
+    )}`;
+    
+    const v7Response = await fetch(v7Url);
+    if (v7Response.ok) {
+      const v7Data = await v7Response.json();
+      const quote = v7Data.quoteResponse?.result?.[0];
+      if (quote && quote.regularMarketPrice) {
+        return parseQuoteResponse(quote);
+      }
+    }
+  } catch (e) {
+    console.log('v7 quote failed, trying v6:', e.message);
+  }
+  
+  try {
+    // Try v6 quote endpoint
+    const v6Url = `${CORS_PROXY}${encodeURIComponent(
       `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${symbol}`
     )}`;
     
-    const response = await fetch(quoteUrl);
-    const data = await response.json();
-    
-    const quote = data.quoteResponse?.result?.[0];
-    
-    if (quote) {
-      return {
-        symbol: quote.symbol || symbol.toUpperCase(),
-        name: quote.longName || quote.shortName || symbol,
-        price: quote.regularMarketPrice || 0,
-        previousClose: quote.regularMarketPreviousClose || 0,
-        change: quote.regularMarketChange || 0,
-        changePercent: quote.regularMarketChangePercent || 0,
-        currency: quote.currency || 'USD',
-        // Day range
-        dayHigh: quote.regularMarketDayHigh || 0,
-        dayLow: quote.regularMarketDayLow || 0,
-        // 52 week range
-        fiftyTwoWeekHigh: quote.fiftyTwoWeekHigh || 0,
-        fiftyTwoWeekLow: quote.fiftyTwoWeekLow || 0,
-        // Volume
-        volume: quote.regularMarketVolume || 0,
-        avgVolume: quote.averageDailyVolume10Day || quote.averageDailyVolume3Month || 0,
-        // Additional metrics
-        marketCap: quote.marketCap || 0,
-        peRatio: quote.trailingPE || quote.forwardPE || 0,
-        // Extra info
-        exchange: quote.exchange || '',
-        quoteType: quote.quoteType || '',
-      };
+    const v6Response = await fetch(v6Url);
+    if (v6Response.ok) {
+      const v6Data = await v6Response.json();
+      const quote = v6Data.quoteResponse?.result?.[0];
+      if (quote && quote.regularMarketPrice) {
+        return parseQuoteResponse(quote);
+      }
     }
-    
-    // Fallback to chart API if v6 quote fails
+  } catch (e) {
+    console.log('v6 quote failed, trying chart:', e.message);
+  }
+  
+  try {
+    // Fallback to chart API
     const chartUrl = `${CORS_PROXY}${encodeURIComponent(
       `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`
     )}`;
@@ -114,23 +134,24 @@ export async function fetchStockQuote(symbol) {
     
     const timestamps = result?.timestamp || [];
     const lastIndex = timestamps.length - 1;
+    const price = meta.regularMarketPrice || 0;
+    const prevClose = meta.previousClose || meta.chartPreviousClose || 0;
     
     return {
       symbol: symbol.toUpperCase(),
       name: meta.longName || meta.shortName || symbol,
-      price: meta.regularMarketPrice || 0,
-      previousClose: meta.previousClose || meta.chartPreviousClose || 0,
-      change: (meta.regularMarketPrice || 0) - (meta.previousClose || 0),
-      changePercent: meta.previousClose ? 
-        (((meta.regularMarketPrice || 0) - meta.previousClose) / meta.previousClose) * 100 : 0,
+      price,
+      previousClose: prevClose,
+      change: price - prevClose,
+      changePercent: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
       currency: meta.currency || 'USD',
-      dayHigh: quotes.high?.[lastIndex] || 0,
-      dayLow: quotes.low?.[lastIndex] || 0,
+      dayHigh: quotes.high?.[lastIndex] || meta.regularMarketDayHigh || 0,
+      dayLow: quotes.low?.[lastIndex] || meta.regularMarketDayLow || 0,
       fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
       fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
-      volume: quotes.volume?.[lastIndex] || 0,
-      avgVolume: meta.averageDailyVolume10Day || 0,
-      marketCap: 0,
+      volume: quotes.volume?.[lastIndex] || meta.regularMarketVolume || 0,
+      avgVolume: meta.averageDailyVolume10Day || meta.averageDailyVolume3Month || 0,
+      marketCap: meta.marketCap || 0,
       peRatio: 0,
     };
   } catch (error) {
