@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Plus, Settings, Loader2, RefreshCw } from 'lucide-react';
 
 import Header from './components/Header';
@@ -86,6 +86,89 @@ function App() {
 
   // Calculate total monthly contribution from individual stocks
   const totalMonthlyContribution = stocks.reduce((sum, stock) => sum + (stock.monthlyContribution || 0), 0);
+
+  // Calculate 5-year projections for net worth
+  const netWorthProjections = useMemo(() => {
+    if (stocks.length === 0 || !wealthData || wealthData.length === 0) return null;
+    
+    const currentValue = metrics.currentValue + cashBalance;
+    const monthlyContribution = totalMonthlyContribution;
+    
+    // Calculate growth rates from historical data
+    const historicalData = wealthData.filter(d => !d.isForecast && d.value > 0);
+    if (historicalData.length < 6) {
+      // Default rates if not enough history
+      const defaultRates = { sixMonth: 0.08, oneYear: 0.08, fiveYear: 0.10, tenYear: 0.10 };
+      return calculateProjections(currentValue, monthlyContribution, defaultRates, cashBalance);
+    }
+    
+    const MIN_RATE = -0.15;
+    const MAX_RATE = 0.35;
+    
+    // Helper to calculate median monthly returns
+    const calcMedianGrowth = (data) => {
+      if (data.length < 2) return 0.08;
+      const monthlyReturns = [];
+      for (let i = 1; i < data.length; i++) {
+        if (data[i - 1].value > 0) {
+          const ret = (data[i].value - data[i - 1].value) / data[i - 1].value;
+          if (ret > -0.20 && ret < 0.20) monthlyReturns.push(ret);
+        }
+      }
+      if (monthlyReturns.length === 0) return 0.08;
+      monthlyReturns.sort((a, b) => a - b);
+      const mid = Math.floor(monthlyReturns.length / 2);
+      const median = monthlyReturns.length % 2 === 0
+        ? (monthlyReturns[mid - 1] + monthlyReturns[mid]) / 2
+        : monthlyReturns[mid];
+      return Math.max(MIN_RATE, Math.min(MAX_RATE, median * 12));
+    };
+    
+    const recent6 = historicalData.slice(-6);
+    const recent12 = historicalData.slice(-12);
+    const recent60 = historicalData.slice(-60);
+    
+    const rates = {
+      sixMonth: calcMedianGrowth(recent6),
+      oneYear: calcMedianGrowth(recent12),
+      fiveYear: calcMedianGrowth(recent60),
+      tenYear: calcMedianGrowth(historicalData),
+    };
+    
+    return calculateProjections(currentValue, monthlyContribution, rates, cashBalance);
+  }, [stocks, wealthData, metrics.currentValue, cashBalance, totalMonthlyContribution]);
+  
+  // Helper function to calculate projections
+  function calculateProjections(currentValue, monthlyContribution, rates, cash) {
+    const months = 60; // 5 years
+    
+    let sixMonthValue = currentValue;
+    let oneYearValue = currentValue;
+    let fiveYearValue = currentValue;
+    let tenYearValue = currentValue;
+    
+    const sixMonthRate = rates.sixMonth / 12;
+    const oneYearRate = rates.oneYear / 12;
+    const fiveYearRate = rates.fiveYear / 12;
+    const tenYearRate = rates.tenYear / 12;
+    
+    for (let i = 1; i <= months; i++) {
+      // Apply growth (only to invested portion, not cash)
+      const investedPortion = currentValue - cash;
+      sixMonthValue = (sixMonthValue - cash) * (1 + sixMonthRate) + cash + monthlyContribution;
+      oneYearValue = (oneYearValue - cash) * (1 + oneYearRate) + cash + monthlyContribution;
+      fiveYearValue = (fiveYearValue - cash) * (1 + fiveYearRate) + cash + monthlyContribution;
+      tenYearValue = (tenYearValue - cash) * (1 + tenYearRate) + cash + monthlyContribution;
+    }
+    
+    return {
+      sixMonth: Math.round(sixMonthValue),
+      oneYear: Math.round(oneYearValue),
+      fiveYear: Math.round(fiveYearValue),
+      tenYear: Math.round(tenYearValue),
+      rates,
+    };
+  }
 
   // Recalculate wealth when stocks or settings change
   useEffect(() => {
@@ -545,6 +628,7 @@ function App() {
           netWorth={metrics.currentValue + cashBalance}
           totalReturn={metrics.totalReturn}
           totalReturnPercent={metrics.totalReturnPercent}
+          projections={netWorthProjections}
         />
 
         {error && (
