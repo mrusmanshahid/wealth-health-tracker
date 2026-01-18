@@ -550,8 +550,8 @@ function App() {
         ) : (
           <>
             {/* Top Row: Stats + Cash Side by Side */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-              <div className="lg:col-span-2">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+              <div className="lg:col-span-3">
                 <StatsCards metrics={metrics} />
               </div>
               <div className="lg:col-span-1">
@@ -570,14 +570,14 @@ function App() {
             </div>
 
             {/* Main Content: Chart + Watchlist Side by Side */}
-            <div className="grid grid-cols-1 xl:grid-cols-4 gap-4 mb-6">
-              <div className="xl:col-span-3">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+              <div className="lg:col-span-3">
                 <WealthChart 
                   wealthData={wealthData} 
                   monthlyContribution={totalMonthlyContribution}
                 />
               </div>
-              <div className="xl:col-span-1">
+              <div className="lg:col-span-1">
                 <Watchlist
                   watchlist={watchlist}
                   onAddToWatchlist={handleAddToWatchlist}
