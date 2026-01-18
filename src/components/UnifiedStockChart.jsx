@@ -13,54 +13,41 @@ import {
 import { format, addMonths } from 'date-fns';
 
 export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
-  // Calculate growth rates from historical data
+  // Calculate growth rates from historical data using CAGR
   const growthRates = useMemo(() => {
     const DEFAULT = { sixMonth: 0.08, oneYear: 0.08, fiveYear: 0.10, tenYear: 0.10 };
-    const MIN_RATE = -0.15;
-    const MAX_RATE = 0.35;
+    const MIN_RATE = -0.30; // Allow more downside for accuracy
+    const MAX_RATE = 0.50;  // Allow more upside for growth stocks
     
     if (!stock?.history || stock.history.length < 6) return DEFAULT;
 
     const history = stock.history;
     
-    const calcBoundedCAGR = (startPrice, endPrice, months) => {
-      if (startPrice <= 0 || endPrice <= 0 || months <= 0) return 0.08;
-      const rate = Math.pow(endPrice / startPrice, 12 / months) - 1;
+    // Calculate CAGR (Compound Annual Growth Rate) - same as display cards
+    const calcCAGR = (data) => {
+      if (!data || data.length < 2) return 0.08;
+      const startPrice = data[0]?.price;
+      const endPrice = data[data.length - 1]?.price;
+      const months = data.length;
+      
+      if (!startPrice || !endPrice || startPrice <= 0 || endPrice <= 0) return 0.08;
+      
+      // CAGR formula: (endValue/startValue)^(1/years) - 1
+      const years = months / 12;
+      const rate = Math.pow(endPrice / startPrice, 1 / years) - 1;
+      
       return Math.max(MIN_RATE, Math.min(MAX_RATE, rate));
-    };
-    
-    const calcMedianGrowth = (data) => {
-      if (data.length < 2) return 0.08;
-      const returns = [];
-      for (let i = 1; i < data.length; i++) {
-        if (data[i - 1].price > 0) {
-          const ret = (data[i].price - data[i - 1].price) / data[i - 1].price;
-          if (ret > -0.20 && ret < 0.20) returns.push(ret);
-        }
-      }
-      if (returns.length === 0) return 0.08;
-      returns.sort((a, b) => a - b);
-      const mid = Math.floor(returns.length / 2);
-      const median = returns.length % 2 === 0 ? (returns[mid - 1] + returns[mid]) / 2 : returns[mid];
-      return Math.max(MIN_RATE, Math.min(MAX_RATE, median * 12));
     };
 
     const recent6 = history.slice(-6);
     const recent12 = history.slice(-12);
     const recent60 = history.slice(-60);
 
-    const sixMonth = calcMedianGrowth(recent6);
-    const oneYear = calcMedianGrowth(recent12);
-    
-    const fiveYearCAGR = recent60.length >= 12 
-      ? calcBoundedCAGR(recent60[0].price, recent60[recent60.length - 1].price, recent60.length)
-      : oneYear;
-    const fiveYear = Math.max(MIN_RATE, Math.min(MAX_RATE, fiveYearCAGR * 0.4 + calcMedianGrowth(recent60) * 0.6));
-    
-    const tenYearCAGR = history.length >= 12
-      ? calcBoundedCAGR(history[0].price, history[history.length - 1].price, history.length)
-      : fiveYear;
-    const tenYear = Math.max(MIN_RATE, Math.min(MAX_RATE, tenYearCAGR * 0.4 + calcMedianGrowth(history) * 0.6));
+    // Use CAGR for each period
+    const sixMonth = recent6.length >= 2 ? calcCAGR(recent6) : 0.08;
+    const oneYear = recent12.length >= 2 ? calcCAGR(recent12) : sixMonth;
+    const fiveYear = recent60.length >= 12 ? calcCAGR(recent60) : oneYear;
+    const tenYear = history.length >= 12 ? calcCAGR(history) : fiveYear;
 
     return { sixMonth, oneYear, fiveYear, tenYear };
   }, [stock?.history]);
