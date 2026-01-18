@@ -106,8 +106,8 @@ export default function QuickStockView({
 
         {/* Header */}
         <div className="flex items-start gap-4 mb-6">
-          <div className="p-3 rounded-xl bg-violet-500/20">
-            <BarChart3 className="w-8 h-8 text-violet-400" />
+          <div className="p-3 rounded-xl bg-emerald-glow/20">
+            <BarChart3 className="w-8 h-8 text-emerald-bright" />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-3">
