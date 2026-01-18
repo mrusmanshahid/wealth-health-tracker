@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   TrendingUp, 
@@ -22,12 +23,16 @@ export default function QuickStockView({
 }) {
   const [quote, setQuote] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('financials');
 
   useEffect(() => {
     if (stock?.symbol) {
       loadQuote();
     }
+    // Prevent body scroll when modal is open
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
   }, [stock?.symbol]);
 
   const loadQuote = async () => {
@@ -47,8 +52,8 @@ export default function QuickStockView({
   const changePercent = quote?.changePercent || stock.changePercent || 0;
   const isUp = changePercent >= 0;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       <div 
         className="absolute inset-0 bg-midnight/80 backdrop-blur-sm"
         onClick={onClose}
@@ -176,5 +181,8 @@ export default function QuickStockView({
       </div>
     </div>
   );
+
+  // Use portal to render at document body level
+  return createPortal(modalContent, document.body);
 }
 
