@@ -16,21 +16,39 @@ export default function PortfolioChart({ stock, showForecast = true }) {
   const chartData = useMemo(() => {
     if (!stock?.history) return [];
     
+    // Get current real-time price
+    const currentPrice = stock.currentPrice || stock.history[stock.history.length - 1]?.price || 0;
+    const today = new Date().toISOString().split('T')[0];
+    
     const historical = stock.history.map(h => ({
       date: h.date,
       price: h.price,
       type: 'historical',
     }));
     
+    // Add or update today's data point with current price
+    const lastEntry = historical[historical.length - 1];
+    if (lastEntry && lastEntry.date < today) {
+      // Add today's data point
+      historical.push({
+        date: today,
+        price: currentPrice,
+        type: 'historical',
+      });
+    } else if (lastEntry) {
+      // Update last entry with current price
+      lastEntry.price = currentPrice;
+    }
+    
     if (showForecast && stock.forecast) {
-      // Add bridge point
+      // Add bridge point using current price
       const lastHistorical = historical[historical.length - 1];
       if (lastHistorical) {
         historical[historical.length - 1] = {
           ...lastHistorical,
-          forecastPrice: lastHistorical.price,
-          forecastLow: lastHistorical.price,
-          forecastHigh: lastHistorical.price,
+          forecastPrice: currentPrice,
+          forecastLow: currentPrice,
+          forecastHigh: currentPrice,
         };
       }
       

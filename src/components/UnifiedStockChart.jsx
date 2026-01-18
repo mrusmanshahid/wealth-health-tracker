@@ -59,6 +59,9 @@ export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
     const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
     const result = [];
 
+    // Get the current real-time price (fall back to last historical if not available)
+    const currentPrice = stock.currentPrice || stock.history[stock.history.length - 1]?.price || 0;
+
     // Historical data - convert to portfolio value
     stock.history.forEach((h, i) => {
       result.push({
@@ -68,6 +71,24 @@ export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
         isHistorical: true,
       });
     });
+
+    // Update the last entry with current real-time price
+    const today = new Date().toISOString().split('T')[0];
+    const lastEntry = result[result.length - 1];
+    
+    // If the last historical date is not today, add today's data point
+    if (lastEntry && lastEntry.date < today) {
+      result.push({
+        date: today,
+        value: currentPrice * shares,
+        price: currentPrice,
+        isHistorical: true,
+      });
+    } else if (lastEntry) {
+      // Update the last entry with current price
+      lastEntry.value = currentPrice * shares;
+      lastEntry.price = currentPrice;
+    }
 
     const lastHistorical = result[result.length - 1];
     const lastDate = new Date(lastHistorical.date);
