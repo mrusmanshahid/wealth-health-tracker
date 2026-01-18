@@ -61,36 +61,43 @@ export async function fetchStockHistory(symbol, years = 10) {
   }
 }
 
-// Helper function to fetch market cap from quoteSummary
+// Helper function to fetch market cap from quoteSummary - tries multiple proxies
 async function fetchMarketCapFromSummary(symbol) {
-  try {
-    const url = `${CORS_PROXY}${encodeURIComponent(
-      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail`
-    )}`;
-    console.log('Fetching quoteSummary for:', symbol);
-    const response = await fetch(url);
-    if (response.ok) {
-      const data = await response.json();
-      console.log('quoteSummary raw data:', JSON.stringify(data).substring(0, 500));
-      const price = data.quoteSummary?.result?.[0]?.price || {};
-      const summary = data.quoteSummary?.result?.[0]?.summaryDetail || {};
-      const result = {
-        marketCap: price.marketCap?.raw || summary.marketCap?.raw || 0,
-        peRatio: summary.trailingPE?.raw || price.trailingPE?.raw || 0,
-        volume: price.regularMarketVolume?.raw || summary.volume?.raw || 0,
-        avgVolume: price.averageDailyVolume10Day?.raw || summary.averageVolume10days?.raw || 0,
-        fiftyTwoWeekHigh: summary.fiftyTwoWeekHigh?.raw || 0,
-        fiftyTwoWeekLow: summary.fiftyTwoWeekLow?.raw || 0,
-        dayHigh: price.regularMarketDayHigh?.raw || summary.dayHigh?.raw || 0,
-        dayLow: price.regularMarketDayLow?.raw || summary.dayLow?.raw || 0,
-      };
-      console.log('quoteSummary parsed result:', result);
-      return result;
-    } else {
-      console.log('quoteSummary response not ok:', response.status);
+  const proxies = [CORS_PROXY, ALT_CORS_PROXY];
+  
+  for (const proxy of proxies) {
+    try {
+      const url = `${proxy}${encodeURIComponent(
+        `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail`
+      )}`;
+      console.log('Fetching quoteSummary for:', symbol, 'with proxy:', proxy.substring(0, 25));
+      const response = await fetch(url);
+      console.log('quoteSummary response status:', response.status);
+      if (response.ok) {
+        const data = await response.json();
+        console.log('quoteSummary raw data:', JSON.stringify(data).substring(0, 500));
+        const price = data.quoteSummary?.result?.[0]?.price || {};
+        const summary = data.quoteSummary?.result?.[0]?.summaryDetail || {};
+        const result = {
+          marketCap: price.marketCap?.raw || summary.marketCap?.raw || 0,
+          peRatio: summary.trailingPE?.raw || price.trailingPE?.raw || 0,
+          volume: price.regularMarketVolume?.raw || summary.volume?.raw || 0,
+          avgVolume: price.averageDailyVolume10Day?.raw || summary.averageVolume10days?.raw || summary.averageVolume?.raw || 0,
+          fiftyTwoWeekHigh: summary.fiftyTwoWeekHigh?.raw || 0,
+          fiftyTwoWeekLow: summary.fiftyTwoWeekLow?.raw || 0,
+          dayHigh: price.regularMarketDayHigh?.raw || summary.dayHigh?.raw || 0,
+          dayLow: price.regularMarketDayLow?.raw || summary.dayLow?.raw || 0,
+        };
+        console.log('quoteSummary parsed result:', result);
+        if (result.marketCap > 0) {
+          return result;
+        }
+      } else {
+        console.log('quoteSummary response not ok:', response.status);
+      }
+    } catch (e) {
+      console.log('quoteSummary failed with proxy:', proxy.substring(0, 25), e.message);
     }
-  } catch (e) {
-    console.log('quoteSummary failed:', e.message);
   }
   return null;
 }
