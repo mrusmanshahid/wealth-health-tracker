@@ -183,24 +183,28 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
         </div>
       </div>
 
-      {/* Monthly Contribution Growth Chart */}
+      {/* Monthly Contribution Growth Chart - Shows on Hover */}
       {stock.monthlyContribution > 0 && (
-        <ContributionGrowthChart 
-          stock={stock} 
-          monthlyContribution={stock.monthlyContribution} 
-        />
+        <div className="overflow-hidden transition-all duration-500 ease-out max-h-0 opacity-0 group-hover:max-h-[300px] group-hover:opacity-100">
+          <ContributionGrowthChart 
+            stock={stock} 
+            monthlyContribution={stock.monthlyContribution} 
+          />
+        </div>
       )}
 
-      {/* Show prompt to add contribution if not set */}
+      {/* Show prompt to add contribution if not set - also on hover */}
       {(!stock.monthlyContribution || stock.monthlyContribution === 0) && (
-        <div className="mt-4 pt-4 border-t border-slate-light/20">
-          <button
-            onClick={() => onEdit(stock)}
-            className="w-full flex items-center justify-center gap-2 py-2 text-xs text-steel hover:text-amber-bright transition-colors"
-          >
-            <PiggyBank className="w-4 h-4" />
-            Add monthly contribution for growth projection
-          </button>
+        <div className="overflow-hidden transition-all duration-300 ease-out max-h-0 opacity-0 group-hover:max-h-[60px] group-hover:opacity-100">
+          <div className="mt-4 pt-4 border-t border-slate-light/20">
+            <button
+              onClick={() => onEdit(stock)}
+              className="w-full flex items-center justify-center gap-2 py-2 text-xs text-steel hover:text-amber-bright transition-colors"
+            >
+              <PiggyBank className="w-4 h-4" />
+              Add monthly contribution for growth projection
+            </button>
+          </div>
         </div>
       )}
     </div>
