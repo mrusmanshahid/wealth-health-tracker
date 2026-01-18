@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, PiggyBank } from 'lucide-react';
 import { searchStocks, fetchStockQuote } from '../services/stockApi';
 
-export default function AddStockModal({ isOpen, onClose, onAdd }) {
+export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
@@ -16,6 +16,16 @@ export default function AddStockModal({ isOpen, onClose, onAdd }) {
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [currentPrice, setCurrentPrice] = useState(0);
   const [error, setError] = useState('');
+
+  // Handle prefilled stock from watchlist or discovery
+  useEffect(() => {
+    if (prefillStock && isOpen) {
+      handleSelectStock({
+        symbol: prefillStock.symbol,
+        name: prefillStock.name,
+      });
+    }
+  }, [prefillStock, isOpen]);
 
   // Debounced search
   useEffect(() => {

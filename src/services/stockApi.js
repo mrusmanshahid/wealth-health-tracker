@@ -241,6 +241,118 @@ export async function fetchQuarterlyEarnings(symbol) {
   }
 }
 
+export async function fetchTrendingStocks() {
+  try {
+    const url = `${ALT_CORS_PROXY}${encodeURIComponent(
+      'https://query1.finance.yahoo.com/v1/finance/trending/US?count=10'
+    )}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    const symbols = data.finance?.result?.[0]?.quotes?.map(q => q.symbol) || [];
+    
+    // Get details for each trending stock
+    const stockDetails = await Promise.all(
+      symbols.slice(0, 8).map(async (symbol) => {
+        try {
+          const quote = await fetchStockQuote(symbol);
+          return quote;
+        } catch (err) {
+          return null;
+        }
+      })
+    );
+    
+    return stockDetails.filter(s => s !== null);
+  } catch (error) {
+    console.error('Error fetching trending stocks:', error);
+    return [];
+  }
+}
+
+export async function fetchMarketMovers() {
+  try {
+    // Fetch gainers
+    const gainersUrl = `${ALT_CORS_PROXY}${encodeURIComponent(
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=5'
+    )}`;
+    
+    // Fetch most active
+    const activeUrl = `${ALT_CORS_PROXY}${encodeURIComponent(
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=5'
+    )}`;
+    
+    const [gainersRes, activeRes] = await Promise.all([
+      fetch(gainersUrl),
+      fetch(activeUrl),
+    ]);
+    
+    const gainersData = await gainersRes.json();
+    const activeData = await activeRes.json();
+    
+    const gainers = (gainersData.finance?.result?.[0]?.quotes || []).map(q => ({
+      symbol: q.symbol,
+      name: q.shortName || q.longName || q.symbol,
+      price: q.regularMarketPrice || 0,
+      change: q.regularMarketChange || 0,
+      changePercent: q.regularMarketChangePercent || 0,
+      volume: q.regularMarketVolume || 0,
+      marketCap: q.marketCap || 0,
+      category: 'gainer',
+    }));
+    
+    const active = (activeData.finance?.result?.[0]?.quotes || []).map(q => ({
+      symbol: q.symbol,
+      name: q.shortName || q.longName || q.symbol,
+      price: q.regularMarketPrice || 0,
+      change: q.regularMarketChange || 0,
+      changePercent: q.regularMarketChangePercent || 0,
+      volume: q.regularMarketVolume || 0,
+      marketCap: q.marketCap || 0,
+      category: 'active',
+    }));
+    
+    return { gainers, active };
+  } catch (error) {
+    console.error('Error fetching market movers:', error);
+    return { gainers: [], active: [] };
+  }
+}
+
+export async function fetchStockRecommendations(symbol) {
+  try {
+    const url = `${ALT_CORS_PROXY}${encodeURIComponent(
+      `https://query1.finance.yahoo.com/v6/finance/recommendationsbysymbol/${symbol}`
+    )}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    const recommendations = data.finance?.result?.[0]?.recommendedSymbols || [];
+    
+    // Get quotes for recommended stocks
+    const stockDetails = await Promise.all(
+      recommendations.slice(0, 5).map(async (rec) => {
+        try {
+          const quote = await fetchStockQuote(rec.symbol);
+          return {
+            ...quote,
+            score: rec.score,
+          };
+        } catch (err) {
+          return null;
+        }
+      })
+    );
+    
+    return stockDetails.filter(s => s !== null);
+  } catch (error) {
+    console.error('Error fetching recommendations:', error);
+    return [];
+  }
+}
+
 export async function fetchStockNews(symbols) {
   try {
     // Fetch news for multiple symbols

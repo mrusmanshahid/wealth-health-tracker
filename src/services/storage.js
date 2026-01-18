@@ -2,6 +2,7 @@
 
 const STORAGE_KEY = 'stock_wealth_tracker_portfolio';
 const SETTINGS_KEY = 'stock_wealth_tracker_settings';
+const WATCHLIST_KEY = 'stock_wealth_tracker_watchlist';
 
 export function savePortfolio(portfolio) {
   try {
@@ -17,6 +18,7 @@ export function savePortfolio(portfolio) {
         currency: stock.currency || 'USD',
         exchangeRate: stock.exchangeRate || 1,
         monthlyContribution: stock.monthlyContribution || 0,
+        transactions: stock.transactions || [],
         addedAt: stock.addedAt,
       })),
       lastUpdated: new Date().toISOString(),
@@ -78,6 +80,32 @@ export function loadSettings() {
       currency: 'USD',
       forecastYears: 5,
     };
+  }
+}
+
+export function saveWatchlist(watchlist) {
+  try {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify({
+      stocks: watchlist,
+      lastUpdated: new Date().toISOString(),
+    }));
+    return true;
+  } catch (error) {
+    console.error('Error saving watchlist:', error);
+    return false;
+  }
+}
+
+export function loadWatchlist() {
+  try {
+    const data = localStorage.getItem(WATCHLIST_KEY);
+    if (!data) return [];
+    
+    const parsed = JSON.parse(data);
+    return parsed.stocks || [];
+  } catch (error) {
+    console.error('Error loading watchlist:', error);
+    return [];
   }
 }
 

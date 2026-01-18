@@ -11,9 +11,11 @@ import EditStockModal from './components/EditStockModal';
 import SettingsPanel from './components/SettingsPanel';
 import StockDetailModal from './components/StockDetailModal';
 import EmptyState from './components/EmptyState';
+import Watchlist from './components/Watchlist';
+import StockDiscovery from './components/StockDiscovery';
 
-import { fetchStockHistory } from './services/stockApi';
-import { savePortfolio, loadPortfolio, saveSettings, loadSettings } from './services/storage';
+import { fetchStockHistory, fetchStockQuote } from './services/stockApi';
+import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist } from './services/storage';
 import { generateForecast, calculateWealthGrowth, calculatePortfolioMetrics } from './utils/forecasting';
 import { generateDemoPortfolio } from './utils/demoData';
 import { convertToUSD, getExchangeRate, fetchExchangeRates } from './services/currencyApi';
@@ -38,6 +40,8 @@ function App() {
   const [selectedStock, setSelectedStock] = useState(null);
   const [editingStock, setEditingStock] = useState(null);
   const [error, setError] = useState(null);
+  const [watchlist, setWatchlist] = useState([]);
+  const [prefillStock, setPrefillStock] = useState(null);
 
   // Load saved data on mount
   useEffect(() => {
@@ -46,7 +50,10 @@ function App() {
       try {
         const savedPortfolio = loadPortfolio();
         const savedSettings = loadSettings();
+        const savedWatchlist = loadWatchlist();
+        
         setSettings(savedSettings);
+        setWatchlist(savedWatchlist);
 
         if (savedPortfolio.length > 0) {
           await refreshStockData(savedPortfolio);
@@ -339,6 +346,45 @@ function App() {
     }
   };
 
+  const handleAddToWatchlist = async (stock) => {
+    // Check if already in watchlist
+    if (watchlist.some(w => w.symbol === stock.symbol)) return;
+    
+    try {
+      const quote = await fetchStockQuote(stock.symbol);
+      const newWatchlistItem = {
+        symbol: stock.symbol,
+        name: stock.name || quote.name,
+        addedPrice: quote.price,
+        addedDate: new Date().toISOString(),
+      };
+      
+      const updatedWatchlist = [...watchlist, newWatchlistItem];
+      setWatchlist(updatedWatchlist);
+      saveWatchlist(updatedWatchlist);
+    } catch (err) {
+      console.error('Error adding to watchlist:', err);
+    }
+  };
+
+  const handleRemoveFromWatchlist = (symbol) => {
+    const updatedWatchlist = watchlist.filter(w => w.symbol !== symbol);
+    setWatchlist(updatedWatchlist);
+    saveWatchlist(updatedWatchlist);
+  };
+
+  const handleAddFromWatchlist = (stock) => {
+    // Remove from watchlist and open add modal with prefilled data
+    handleRemoveFromWatchlist(stock.symbol);
+    setPrefillStock(stock);
+    setShowAddModal(true);
+  };
+
+  const handleAddFromDiscovery = (stock) => {
+    setPrefillStock(stock);
+    setShowAddModal(true);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -428,6 +474,22 @@ function App() {
               </div>
             </div>
 
+            {/* Watchlist Section */}
+            <Watchlist
+              watchlist={watchlist}
+              onAddToWatchlist={handleAddToWatchlist}
+              onRemoveFromWatchlist={handleRemoveFromWatchlist}
+              onAddToPortfolio={handleAddFromWatchlist}
+            />
+
+            {/* Stock Discovery Section */}
+            <StockDiscovery
+              portfolioSymbols={stocks.map(s => s.symbol)}
+              watchlistSymbols={watchlist.map(w => w.symbol)}
+              onAddToWatchlist={handleAddToWatchlist}
+              onAddToPortfolio={handleAddFromDiscovery}
+            />
+
             {/* News Section */}
             <NewsSection symbols={stocks.map(s => s.symbol)} />
           </>
@@ -436,8 +498,12 @@ function App() {
         {/* Modals */}
         <AddStockModal
           isOpen={showAddModal}
-          onClose={() => setShowAddModal(false)}
+          onClose={() => {
+            setShowAddModal(false);
+            setPrefillStock(null);
+          }}
           onAdd={handleAddStock}
+          prefillStock={prefillStock}
         />
 
         <SettingsPanel
