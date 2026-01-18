@@ -121,49 +121,62 @@ export async function fetchStockQuote(symbol) {
   
   console.log('Fetching quote for:', symbol);
   
-  try {
-    // Try v7 quote endpoint first (most reliable for comprehensive data)
-    const v7Url = `${CORS_PROXY}${encodeURIComponent(
-      `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
-    )}`;
-    
-    const v7Response = await fetch(v7Url);
-    console.log('v7 response status:', v7Response.status);
-    if (v7Response.ok) {
-      const v7Data = await v7Response.json();
-      console.log('v7 data keys:', Object.keys(v7Data));
-      const quote = v7Data.quoteResponse?.result?.[0];
-      if (quote && quote.regularMarketPrice) {
-        console.log('v7 quote marketCap:', quote.marketCap, 'peRatio:', quote.trailingPE, 'volume:', quote.regularMarketVolume);
-        baseQuote = parseQuoteResponse(quote);
-        console.log('Using v7 endpoint');
-      }
-    }
-  } catch (e) {
-    console.log('v7 quote failed, trying v6:', e.message);
-  }
+  // Try multiple CORS proxies for better reliability
+  const proxies = [CORS_PROXY, ALT_CORS_PROXY];
   
-  if (!baseQuote) {
+  for (const proxy of proxies) {
+    if (baseQuote) break;
+    
     try {
-      // Try v6 quote endpoint
-      const v6Url = `${CORS_PROXY}${encodeURIComponent(
-        `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${symbol}`
+      // Try v7 quote endpoint first (most reliable for comprehensive data)
+      const v7Url = `${proxy}${encodeURIComponent(
+        `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbol}`
       )}`;
       
-      const v6Response = await fetch(v6Url);
-      console.log('v6 response status:', v6Response.status);
-      if (v6Response.ok) {
-        const v6Data = await v6Response.json();
-        console.log('v6 data keys:', Object.keys(v6Data));
-        const quote = v6Data.quoteResponse?.result?.[0];
+      const v7Response = await fetch(v7Url);
+      console.log('v7 response status:', v7Response.status, 'proxy:', proxy.substring(0, 30));
+      if (v7Response.ok) {
+        const v7Data = await v7Response.json();
+        console.log('v7 data keys:', Object.keys(v7Data));
+        const quote = v7Data.quoteResponse?.result?.[0];
         if (quote && quote.regularMarketPrice) {
-          console.log('v6 quote marketCap:', quote.marketCap, 'peRatio:', quote.trailingPE);
+          console.log('v7 quote marketCap:', quote.marketCap, 'peRatio:', quote.trailingPE, 'volume:', quote.regularMarketVolume);
           baseQuote = parseQuoteResponse(quote);
-          console.log('Using v6 endpoint');
+          console.log('Using v7 endpoint with proxy:', proxy.substring(0, 30));
+          break;
         }
       }
     } catch (e) {
-      console.log('v6 quote failed, trying chart:', e.message);
+      console.log('v7 quote failed with proxy:', proxy.substring(0, 30), e.message);
+    }
+  }
+  
+  if (!baseQuote) {
+    for (const proxy of proxies) {
+      if (baseQuote) break;
+      
+      try {
+        // Try v6 quote endpoint
+        const v6Url = `${proxy}${encodeURIComponent(
+          `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${symbol}`
+        )}`;
+        
+        const v6Response = await fetch(v6Url);
+        console.log('v6 response status:', v6Response.status, 'proxy:', proxy.substring(0, 30));
+        if (v6Response.ok) {
+          const v6Data = await v6Response.json();
+          console.log('v6 data keys:', Object.keys(v6Data));
+          const quote = v6Data.quoteResponse?.result?.[0];
+          if (quote && quote.regularMarketPrice) {
+            console.log('v6 quote marketCap:', quote.marketCap, 'peRatio:', quote.trailingPE);
+            baseQuote = parseQuoteResponse(quote);
+            console.log('Using v6 endpoint with proxy:', proxy.substring(0, 30));
+            break;
+          }
+        }
+      } catch (e) {
+        console.log('v6 quote failed with proxy:', proxy.substring(0, 30), e.message);
+      }
     }
   }
   
@@ -209,9 +222,12 @@ export async function fetchStockQuote(symbol) {
     }
   }
   
-  // If we don't have market cap, try to fetch it from quoteSummary
-  if (baseQuote && (!baseQuote.marketCap || baseQuote.marketCap === 0)) {
+  // Always try to get additional data from quoteSummary if we have missing fields
+  console.log('baseQuote before summary:', baseQuote?.marketCap, baseQuote?.peRatio, baseQuote?.avgVolume);
+  if (baseQuote && (!baseQuote.marketCap || !baseQuote.peRatio || !baseQuote.avgVolume)) {
+    console.log('Fetching additional data from quoteSummary...');
     const summaryData = await fetchMarketCapFromSummary(symbol);
+    console.log('Summary data:', summaryData);
     if (summaryData) {
       baseQuote = {
         ...baseQuote,
