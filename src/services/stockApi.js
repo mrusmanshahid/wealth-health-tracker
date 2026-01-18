@@ -67,12 +67,14 @@ async function fetchMarketCapFromSummary(symbol) {
     const url = `${CORS_PROXY}${encodeURIComponent(
       `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail`
     )}`;
+    console.log('Fetching quoteSummary for:', symbol);
     const response = await fetch(url);
     if (response.ok) {
       const data = await response.json();
+      console.log('quoteSummary raw data:', JSON.stringify(data).substring(0, 500));
       const price = data.quoteSummary?.result?.[0]?.price || {};
       const summary = data.quoteSummary?.result?.[0]?.summaryDetail || {};
-      return {
+      const result = {
         marketCap: price.marketCap?.raw || summary.marketCap?.raw || 0,
         peRatio: summary.trailingPE?.raw || price.trailingPE?.raw || 0,
         volume: price.regularMarketVolume?.raw || summary.volume?.raw || 0,
@@ -82,6 +84,10 @@ async function fetchMarketCapFromSummary(symbol) {
         dayHigh: price.regularMarketDayHigh?.raw || summary.dayHigh?.raw || 0,
         dayLow: price.regularMarketDayLow?.raw || summary.dayLow?.raw || 0,
       };
+      console.log('quoteSummary parsed result:', result);
+      return result;
+    } else {
+      console.log('quoteSummary response not ok:', response.status);
     }
   } catch (e) {
     console.log('quoteSummary failed:', e.message);
@@ -113,6 +119,8 @@ export async function fetchStockQuote(symbol) {
   
   let baseQuote = null;
   
+  console.log('Fetching quote for:', symbol);
+  
   try {
     // Try v7 quote endpoint first (most reliable for comprehensive data)
     const v7Url = `${CORS_PROXY}${encodeURIComponent(
@@ -120,11 +128,15 @@ export async function fetchStockQuote(symbol) {
     )}`;
     
     const v7Response = await fetch(v7Url);
+    console.log('v7 response status:', v7Response.status);
     if (v7Response.ok) {
       const v7Data = await v7Response.json();
+      console.log('v7 data keys:', Object.keys(v7Data));
       const quote = v7Data.quoteResponse?.result?.[0];
       if (quote && quote.regularMarketPrice) {
+        console.log('v7 quote marketCap:', quote.marketCap, 'peRatio:', quote.trailingPE, 'volume:', quote.regularMarketVolume);
         baseQuote = parseQuoteResponse(quote);
+        console.log('Using v7 endpoint');
       }
     }
   } catch (e) {
@@ -139,11 +151,15 @@ export async function fetchStockQuote(symbol) {
       )}`;
       
       const v6Response = await fetch(v6Url);
+      console.log('v6 response status:', v6Response.status);
       if (v6Response.ok) {
         const v6Data = await v6Response.json();
+        console.log('v6 data keys:', Object.keys(v6Data));
         const quote = v6Data.quoteResponse?.result?.[0];
         if (quote && quote.regularMarketPrice) {
+          console.log('v6 quote marketCap:', quote.marketCap, 'peRatio:', quote.trailingPE);
           baseQuote = parseQuoteResponse(quote);
+          console.log('Using v6 endpoint');
         }
       }
     } catch (e) {

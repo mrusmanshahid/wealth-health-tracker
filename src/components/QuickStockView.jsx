@@ -51,6 +51,7 @@ export default function QuickStockView({
     // Fetch quote first
     try {
       const quoteData = await fetchStockQuote(stock.symbol);
+      console.log('Quote data for', stock.symbol, ':', quoteData);
       setQuote(quoteData);
       setIsLoading(false);
     } catch (err) {
