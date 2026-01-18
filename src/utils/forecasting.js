@@ -171,15 +171,24 @@ export function calculateWealthGrowth(stocks, monthlyContribution = 0, years = 5
   
   // Build monthly wealth trajectory
   const today = new Date();
-  const allData = [];
+  const todayStr = today.toISOString().split('T')[0];
+  const currentMonthKey = todayStr.substring(0, 7); // YYYY-MM
   
   // Combine historical data
   const monthlyData = new Map();
   
+  // Calculate current portfolio value using real-time prices
+  let currentPortfolioValue = 0;
+  
   stocks.forEach(stock => {
     if (!stock.history) return;
     
-    const shares = stock.investedAmount / (stock.purchasePrice || stock.history[0]?.price || 1);
+    // Use shares if available, otherwise calculate from invested amount
+    const shares = stock.shares || (stock.investedAmount / (stock.purchasePrice || stock.history[0]?.price || 1));
+    
+    // Calculate current value using the real-time currentPrice
+    const stockCurrentPrice = stock.currentPrice || stock.history[stock.history.length - 1]?.price || 0;
+    currentPortfolioValue += shares * stockCurrentPrice;
     
     stock.history.forEach(h => {
       const monthKey = h.date.substring(0, 7); // YYYY-MM
@@ -200,13 +209,18 @@ export function calculateWealthGrowth(stocks, monthlyContribution = 0, years = 5
     }
   });
   
+  // Ensure today's value uses current prices (override the historical data for current month)
+  const currentMonthData = monthlyData.get(currentMonthKey) || { date: todayStr, historical: 0 };
+  currentMonthData.date = todayStr;
+  currentMonthData.historical = currentPortfolioValue;
+  monthlyData.set(currentMonthKey, currentMonthData);
+  
   // Sort and add contributions
   const sortedData = Array.from(monthlyData.values()).sort((a, b) => 
     new Date(a.date) - new Date(b.date)
   );
   
   let totalContributions = stocks.reduce((sum, s) => sum + (s.investedAmount || 0), 0);
-  const todayStr = today.toISOString().split('T')[0];
   
   return sortedData.map((d, index) => {
     const isPast = d.date <= todayStr;
