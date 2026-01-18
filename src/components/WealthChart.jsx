@@ -268,33 +268,33 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
 
   return (
     <div className="chart-container">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-xl font-bold text-pearl">Wealth Growth</h3>
-          <p className="text-sm text-steel mt-1">
-            Historical performance & 5-year projections
-            {monthlyContribution > 0 && ` • $${monthlyContribution.toLocaleString()}/mo contribution`}
+          <h3 className="text-lg font-bold text-pearl">Wealth Growth</h3>
+          <p className="text-xs text-steel mt-0.5">
+            Historical & 5-year projections
+            {monthlyContribution > 0 && ` • $${monthlyContribution.toLocaleString()}/mo`}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-xs">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-pearl"></div>
-            <span className="text-steel">Historical</span>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-pearl"></div>
+            <span className="text-steel">Hist</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-amber-bright"></div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-0.5 bg-amber-bright"></div>
             <span className="text-steel">6M</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-emerald-bright"></div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-0.5 bg-emerald-bright"></div>
             <span className="text-steel">1Y</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-sapphire-bright"></div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-0.5 bg-sapphire-bright"></div>
             <span className="text-steel">5Y</span>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-0.5 bg-violet-bright"></div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-0.5 bg-violet-bright"></div>
             <span className="text-steel">10Y</span>
           </div>
         </div>
@@ -302,7 +302,7 @@ export default function WealthChart({ wealthData, monthlyContribution, stocks })
 
       {/* Final Projections Summary */}
       {finalProjections && (
-        <div className="grid grid-cols-5 gap-2 mb-6">
+        <div className="grid grid-cols-5 gap-2 mb-4">
           <div className="p-3 rounded-lg bg-slate-dark/50 border border-slate-light/10 text-center">
             <p className="text-xs text-steel mb-1">Contributions</p>
             <p className="font-mono font-semibold text-pearl text-sm">{formatValue(finalProjections.contributions)}</p>

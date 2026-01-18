@@ -128,57 +128,50 @@ export default function InvestableCash({
   // Compact view for sidebar
   if (compact) {
     return (
-      <div className="glass-card p-4 h-full">
-        <div className="flex items-center justify-between mb-3">
+      <div className="glass-card p-3 h-full">
+        <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-cyan-400" />
-            <span className="font-semibold text-pearl">Cash</span>
+            <div className="p-1.5 rounded-lg bg-cyan-500/20">
+              <Wallet className="w-4 h-4 text-cyan-400" />
+            </div>
+            <span className="text-xs text-steel uppercase tracking-wide">Cash</span>
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="p-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 transition-colors"
+            className="p-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 transition-colors"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3 h-3" />
           </button>
         </div>
         
-        <div className="text-3xl font-bold text-white font-mono mb-3">
-          ${cashBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <div className="text-xl font-bold text-cyan-400 font-mono mb-2">
+          ${cashBalance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </div>
         
         {/* Quick stats */}
-        <div className="space-y-2 text-xs">
+        <div className="space-y-1 text-xs">
           <div className="flex justify-between">
-            <span className="text-steel">Deposited</span>
+            <span className="text-steel">In</span>
             <span className="text-emerald-400 font-mono">
               +${cashTransactions.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0).toLocaleString()}
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-steel">Invested</span>
-            <span className="text-cyan-400 font-mono">
+            <span className="text-steel">Out</span>
+            <span className="text-rose-400 font-mono">
               -${cashTransactions.filter(t => t.type === 'buy').reduce((s, t) => s + t.amount, 0).toLocaleString()}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-steel">From Sales</span>
-            <span className="text-violet-400 font-mono">
-              +${cashTransactions.filter(t => t.type === 'sell').reduce((s, t) => s + t.amount, 0).toLocaleString()}
             </span>
           </div>
         </div>
 
         {/* Top Suggestion */}
         {suggestions.length > 0 && suggestions[0].symbol && (
-          <div className="mt-4 pt-3 border-t border-slate-light/20">
-            <p className="text-xs text-steel mb-2 flex items-center gap-1">
-              <Lightbulb className="w-3 h-3 text-amber-400" />
-              Suggestion
-            </p>
+          <div className="mt-2 pt-2 border-t border-slate-light/20">
             <button
               onClick={() => onBuyStock({ symbol: suggestions[0].symbol, name: suggestions[0].name })}
-              className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors"
+              className="w-full py-1.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
             >
+              <Lightbulb className="w-3 h-3" />
               Buy {suggestions[0].symbol}
             </button>
           </div>
