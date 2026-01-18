@@ -1,8 +1,10 @@
-import { Heart, RefreshCw } from 'lucide-react';
+import { Heart, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 
-export default function Header({ onRefresh, isLoading }) {
+export default function Header({ onRefresh, isLoading, netWorth = 0, totalReturn = 0, totalReturnPercent = 0 }) {
+  const isPositive = totalReturn >= 0;
+  
   return (
-    <header className="glass-card mb-8 px-6 py-4">
+    <header className="glass-card mb-6 px-6 py-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -20,14 +22,42 @@ export default function Header({ onRefresh, isLoading }) {
           </div>
         </div>
         
+        {/* Net Worth Display */}
+        {netWorth > 0 && (
+          <div className="hidden md:flex flex-col items-center px-6 border-x border-slate-light/20">
+            <span className="text-xs text-steel uppercase tracking-wider mb-1">Total Net Worth</span>
+            <span className="text-3xl font-bold font-mono bg-gradient-to-r from-emerald-bright to-cyan-400 bg-clip-text text-transparent">
+              ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+            <div className={`flex items-center gap-1 text-sm ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+              {isPositive ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              <span className="font-mono">
+                {isPositive ? '+' : ''}{totalReturnPercent.toFixed(1)}%
+              </span>
+              <span className="text-steel ml-1">
+                ({isPositive ? '+' : ''}${totalReturn.toLocaleString(undefined, { maximumFractionDigits: 0 })})
+              </span>
+            </div>
+          </div>
+        )}
+        
         <div className="flex items-center gap-3">
+          {/* Mobile Net Worth */}
+          {netWorth > 0 && (
+            <div className="md:hidden text-right mr-2">
+              <span className="text-xs text-steel block">Net Worth</span>
+              <span className="text-lg font-bold font-mono text-emerald-bright">
+                ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>
+            </div>
+          )}
           <button
             onClick={onRefresh}
             disabled={isLoading}
             className="btn-secondary flex items-center gap-2"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Updating...' : 'Refresh'}
+            <span className="hidden sm:inline">{isLoading ? 'Updating...' : 'Refresh'}</span>
           </button>
         </div>
       </div>

@@ -528,7 +528,13 @@ function App() {
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 py-8">
-        <Header onRefresh={handleRefresh} isLoading={isRefreshing} />
+        <Header 
+          onRefresh={handleRefresh} 
+          isLoading={isRefreshing}
+          netWorth={metrics.currentValue + cashBalance}
+          totalReturn={metrics.totalReturn}
+          totalReturnPercent={metrics.totalReturnPercent}
+        />
 
         {error && (
           <div className="mb-6 p-4 glass-card border-ruby/30 bg-ruby/10">
