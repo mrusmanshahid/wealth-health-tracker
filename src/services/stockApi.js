@@ -244,7 +244,7 @@ export async function fetchQuarterlyEarnings(symbol) {
 export async function fetchTrendingStocks() {
   try {
     const url = `${ALT_CORS_PROXY}${encodeURIComponent(
-      'https://query1.finance.yahoo.com/v1/finance/trending/US?count=10'
+      'https://query1.finance.yahoo.com/v1/finance/trending/US?count=20'
     )}`;
     
     const response = await fetch(url);
@@ -252,9 +252,22 @@ export async function fetchTrendingStocks() {
     
     const symbols = data.finance?.result?.[0]?.quotes?.map(q => q.symbol) || [];
     
+    // Filter out crypto (symbols ending in -USD or containing crypto patterns)
+    const filteredSymbols = symbols.filter(s => 
+      !s.includes('-USD') && 
+      !s.includes('BTC') && 
+      !s.includes('ETH') && 
+      !s.includes('DOGE') &&
+      !s.includes('SHIB') &&
+      !s.includes('SOL-') &&
+      !s.includes('XRP') &&
+      !s.endsWith('USD') &&
+      s.length <= 5
+    );
+    
     // Get details for each trending stock
     const stockDetails = await Promise.all(
-      symbols.slice(0, 8).map(async (symbol) => {
+      filteredSymbols.slice(0, 8).map(async (symbol) => {
         try {
           const quote = await fetchStockQuote(symbol);
           return quote;
@@ -271,16 +284,27 @@ export async function fetchTrendingStocks() {
   }
 }
 
+// Filter out crypto symbols
+const isCrypto = (symbol) => 
+  symbol.includes('-USD') || 
+  symbol.includes('BTC') || 
+  symbol.includes('ETH') || 
+  symbol.includes('DOGE') ||
+  symbol.includes('SHIB') ||
+  symbol.includes('XRP') ||
+  symbol.endsWith('USD') ||
+  symbol.length > 5;
+
 export async function fetchMarketMovers() {
   try {
     // Fetch gainers
     const gainersUrl = `${ALT_CORS_PROXY}${encodeURIComponent(
-      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=5'
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=day_gainers&count=15'
     )}`;
     
     // Fetch most active
     const activeUrl = `${ALT_CORS_PROXY}${encodeURIComponent(
-      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=5'
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=15'
     )}`;
     
     const [gainersRes, activeRes] = await Promise.all([
@@ -291,32 +315,144 @@ export async function fetchMarketMovers() {
     const gainersData = await gainersRes.json();
     const activeData = await activeRes.json();
     
-    const gainers = (gainersData.finance?.result?.[0]?.quotes || []).map(q => ({
-      symbol: q.symbol,
-      name: q.shortName || q.longName || q.symbol,
-      price: q.regularMarketPrice || 0,
-      change: q.regularMarketChange || 0,
-      changePercent: q.regularMarketChangePercent || 0,
-      volume: q.regularMarketVolume || 0,
-      marketCap: q.marketCap || 0,
-      category: 'gainer',
-    }));
+    const gainers = (gainersData.finance?.result?.[0]?.quotes || [])
+      .filter(q => !isCrypto(q.symbol) && q.quoteType === 'EQUITY')
+      .slice(0, 5)
+      .map(q => ({
+        symbol: q.symbol,
+        name: q.shortName || q.longName || q.symbol,
+        price: q.regularMarketPrice || 0,
+        change: q.regularMarketChange || 0,
+        changePercent: q.regularMarketChangePercent || 0,
+        volume: q.regularMarketVolume || 0,
+        marketCap: q.marketCap || 0,
+        category: 'gainer',
+      }));
     
-    const active = (activeData.finance?.result?.[0]?.quotes || []).map(q => ({
-      symbol: q.symbol,
-      name: q.shortName || q.longName || q.symbol,
-      price: q.regularMarketPrice || 0,
-      change: q.regularMarketChange || 0,
-      changePercent: q.regularMarketChangePercent || 0,
-      volume: q.regularMarketVolume || 0,
-      marketCap: q.marketCap || 0,
-      category: 'active',
-    }));
+    const active = (activeData.finance?.result?.[0]?.quotes || [])
+      .filter(q => !isCrypto(q.symbol) && q.quoteType === 'EQUITY')
+      .slice(0, 5)
+      .map(q => ({
+        symbol: q.symbol,
+        name: q.shortName || q.longName || q.symbol,
+        price: q.regularMarketPrice || 0,
+        change: q.regularMarketChange || 0,
+        changePercent: q.regularMarketChangePercent || 0,
+        volume: q.regularMarketVolume || 0,
+        marketCap: q.marketCap || 0,
+        category: 'active',
+      }));
     
     return { gainers, active };
   } catch (error) {
     console.error('Error fetching market movers:', error);
     return { gainers: [], active: [] };
+  }
+}
+
+export async function fetchSectorStocks() {
+  try {
+    // Define top stocks for each major sector
+    const sectorLeaders = {
+      'Technology': ['AAPL', 'MSFT', 'NVDA', 'GOOGL'],
+      'Healthcare': ['UNH', 'JNJ', 'LLY', 'PFE'],
+      'Financial': ['JPM', 'BAC', 'V', 'MA'],
+      'Consumer': ['AMZN', 'TSLA', 'HD', 'MCD'],
+      'Energy': ['XOM', 'CVX', 'COP', 'SLB'],
+      'Industrial': ['CAT', 'BA', 'HON', 'UPS'],
+    };
+    
+    const sectors = [];
+    
+    for (const [sector, symbols] of Object.entries(sectorLeaders)) {
+      try {
+        // Get quote for the first (top) stock in each sector
+        const quote = await fetchStockQuote(symbols[0]);
+        sectors.push({
+          sector,
+          ...quote,
+          allSymbols: symbols,
+        });
+      } catch (err) {
+        console.error(`Error fetching ${sector} leader:`, err);
+      }
+    }
+    
+    return sectors;
+  } catch (error) {
+    console.error('Error fetching sector stocks:', error);
+    return [];
+  }
+}
+
+export async function fetchUndervaluedStocks() {
+  try {
+    // Fetch undervalued large caps
+    const url = `${ALT_CORS_PROXY}${encodeURIComponent(
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=undervalued_large_caps&count=10'
+    )}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    const stocks = (data.finance?.result?.[0]?.quotes || [])
+      .filter(q => !isCrypto(q.symbol) && q.quoteType === 'EQUITY')
+      .slice(0, 6)
+      .map(q => ({
+        symbol: q.symbol,
+        name: q.shortName || q.longName || q.symbol,
+        price: q.regularMarketPrice || 0,
+        change: q.regularMarketChange || 0,
+        changePercent: q.regularMarketChangePercent || 0,
+        volume: q.regularMarketVolume || 0,
+        marketCap: q.marketCap || 0,
+        peRatio: q.trailingPE || q.forwardPE || null,
+        fiftyTwoWeekLow: q.fiftyTwoWeekLow || 0,
+        fiftyTwoWeekHigh: q.fiftyTwoWeekHigh || 0,
+        category: 'undervalued',
+      }));
+    
+    // Calculate discount from 52-week high
+    return stocks.map(s => ({
+      ...s,
+      discountFromHigh: s.fiftyTwoWeekHigh > 0 
+        ? ((s.fiftyTwoWeekHigh - s.price) / s.fiftyTwoWeekHigh * 100).toFixed(1)
+        : 0,
+    }));
+  } catch (error) {
+    console.error('Error fetching undervalued stocks:', error);
+    return [];
+  }
+}
+
+export async function fetchGrowthStocks() {
+  try {
+    // Fetch growth stocks
+    const url = `${ALT_CORS_PROXY}${encodeURIComponent(
+      'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=growth_technology_stocks&count=10'
+    )}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    const stocks = (data.finance?.result?.[0]?.quotes || [])
+      .filter(q => !isCrypto(q.symbol) && q.quoteType === 'EQUITY')
+      .slice(0, 6)
+      .map(q => ({
+        symbol: q.symbol,
+        name: q.shortName || q.longName || q.symbol,
+        price: q.regularMarketPrice || 0,
+        change: q.regularMarketChange || 0,
+        changePercent: q.regularMarketChangePercent || 0,
+        volume: q.regularMarketVolume || 0,
+        marketCap: q.marketCap || 0,
+        category: 'growth',
+      }));
+    
+    return stocks;
+  } catch (error) {
+    console.error('Error fetching growth stocks:', error);
+    return [];
   }
 }
 
