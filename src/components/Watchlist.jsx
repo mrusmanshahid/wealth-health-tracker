@@ -19,7 +19,8 @@ export default function Watchlist({
   watchlist = [], 
   onAddToWatchlist, 
   onRemoveFromWatchlist,
-  onAddToPortfolio 
+  onAddToPortfolio,
+  compact = false
 }) {
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -96,6 +97,100 @@ export default function Watchlist({
       console.error('Error adding to watchlist:', err);
     }
   };
+
+  // Compact sidebar view
+  if (compact) {
+    return (
+      <div className="glass-card p-4 h-full">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-amber-400" />
+            <span className="font-semibold text-pearl">Watchlist</span>
+            <span className="text-xs text-steel">({watchlist.length})</span>
+          </div>
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="p-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 transition-colors"
+          >
+            {showSearch ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {showSearch && (
+          <div className="mb-3 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="w-full bg-slate-dark/50 border border-slate-light/30 rounded-lg pl-9 pr-3 py-2 text-pearl text-sm placeholder-steel focus:outline-none focus:border-amber-500/50"
+              autoFocus
+            />
+            {searchResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-slate-dark border border-slate-light/30 rounded-lg overflow-hidden shadow-xl">
+                {searchResults.slice(0, 4).map((result) => (
+                  <button key={result.symbol} onClick={() => handleAddToWatchlist(result)} className="w-full px-3 py-2 flex items-center justify-between hover:bg-slate-light/20 text-left">
+                    <span className="font-medium text-pearl text-sm">{result.symbol}</span>
+                    <Plus className="w-3 h-3 text-steel" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+          {watchlistData.length > 0 ? watchlistData.map((stock) => {
+            const isUp = stock.changePercent >= 0;
+            return (
+              <div key={stock.symbol} className="flex items-center justify-between p-2 rounded-lg bg-slate-dark/30 hover:bg-slate-dark/50 group">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-pearl text-sm">{stock.symbol}</span>
+                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-silver font-mono">${stock.price?.toFixed(2)}</span>
+                    <span className={isUp ? 'text-emerald-400' : 'text-rose-400'}>
+                      {isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => setSelectedStock(stock)} className="p-1 rounded bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30">
+                    <FileText className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => onAddToPortfolio(stock)} className="p-1 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                    <Plus className="w-3 h-3" />
+                  </button>
+                  <button onClick={() => onRemoveFromWatchlist(stock.symbol)} className="p-1 rounded bg-rose-500/20 text-rose-400 hover:bg-rose-500/30">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+            );
+          }) : (
+            <div className="text-center py-4 text-steel text-sm">
+              <Eye className="w-6 h-6 mx-auto mb-2 opacity-50" />
+              <p>No stocks watched</p>
+            </div>
+          )}
+        </div>
+
+        {selectedStock && (
+          <QuickStockView
+            stock={selectedStock}
+            onClose={() => setSelectedStock(null)}
+            onAddToWatchlist={null}
+            onAddToPortfolio={onAddToPortfolio}
+            isInWatchlist={true}
+            isInPortfolio={false}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card p-6 mb-8">

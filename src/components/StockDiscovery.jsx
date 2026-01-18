@@ -31,7 +31,8 @@ export default function StockDiscovery({
   portfolioSymbols = [],
   watchlistSymbols = [],
   onAddToWatchlist,
-  onAddToPortfolio
+  onAddToPortfolio,
+  compact = false
 }) {
   const [activeTab, setActiveTab] = useState('sectors');
   const [trendingStocks, setTrendingStocks] = useState([]);
@@ -134,29 +135,29 @@ export default function StockDiscovery({
   };
 
   return (
-    <div className="glass-card p-6 mb-8">
-      <div className="flex items-center justify-between mb-6">
+    <div className={`glass-card ${compact ? 'p-4' : 'p-6 mb-8'}`}>
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20">
-            <Sparkles className="w-5 h-5 text-violet-400" />
+          <div className={`${compact ? 'p-1.5' : 'p-2'} rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20`}>
+            <Sparkles className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-violet-400`} />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-pearl">Discover Stocks</h2>
-            <p className="text-xs text-steel">Find your next investment opportunity</p>
+            <h2 className={`${compact ? 'text-base' : 'text-lg'} font-bold text-pearl`}>Discover Stocks</h2>
+            {!compact && <p className="text-xs text-steel">Find your next investment opportunity</p>}
           </div>
         </div>
         <button
           onClick={loadDiscoveryData}
           disabled={isLoading}
-          className="btn-secondary text-sm flex items-center gap-2"
+          className={`${compact ? 'p-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-400' : 'btn-secondary text-sm'} flex items-center gap-2 transition-colors`}
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          Refresh
+          {!compact && 'Refresh'}
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+      <div className={`flex gap-2 mb-4 overflow-x-auto ${compact ? 'pb-1' : 'pb-2'}`}>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -178,9 +179,9 @@ export default function StockDiscovery({
 
       {/* Content */}
       {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <RefreshCw className="w-6 h-6 text-violet-400 animate-spin" />
-          <span className="ml-3 text-silver">Loading market data...</span>
+        <div className={`flex items-center justify-center ${compact ? 'py-8' : 'py-12'}`}>
+          <RefreshCw className="w-5 h-5 text-violet-400 animate-spin" />
+          <span className="ml-2 text-silver text-sm">Loading...</span>
         </div>
       ) : (
         <>
@@ -191,7 +192,7 @@ export default function StockDiscovery({
             </div>
           ) : activeTab === 'sectors' ? (
             /* Sectors Grid - Special Layout */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={`grid ${compact ? 'grid-cols-1 max-h-[350px] overflow-y-auto' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'} gap-3`}>
               {sectorStocks.map((stock, idx) => {
                 const isUp = (stock.changePercent || 0) >= 0;
                 const inPortfolio = isInPortfolio(stock.symbol);
@@ -282,7 +283,7 @@ export default function StockDiscovery({
             </div>
           ) : activeTab === 'undervalued' ? (
             /* Undervalued Stocks - Special Layout */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className={`grid ${compact ? 'grid-cols-1 max-h-[350px] overflow-y-auto' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'} gap-3`}>
               {undervaluedStocks.map((stock, idx) => {
                 const isUp = (stock.changePercent || 0) >= 0;
                 const inPortfolio = isInPortfolio(stock.symbol);
@@ -388,8 +389,8 @@ export default function StockDiscovery({
             </div>
           ) : (
             /* Default Grid for other tabs */
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {getCurrentData().map((stock, idx) => {
+            <div className={`grid ${compact ? 'grid-cols-1 max-h-[350px] overflow-y-auto' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'} gap-3`}>
+              {getCurrentData().slice(0, compact ? 6 : 20).map((stock, idx) => {
                 const isUp = (stock.changePercent || 0) >= 0;
                 const inPortfolio = isInPortfolio(stock.symbol);
                 const inWatchlist = isInWatchlist(stock.symbol);
@@ -397,7 +398,7 @@ export default function StockDiscovery({
                 return (
                   <div
                     key={stock.symbol || idx}
-                    className="bg-slate-dark/50 rounded-xl p-4 border border-slate-light/20 hover:border-violet-500/30 transition-all group"
+                    className={`bg-slate-dark/50 rounded-xl ${compact ? 'p-3' : 'p-4'} border border-slate-light/20 hover:border-violet-500/30 transition-all group`}
                   >
                     {/* Header */}
                     <div className="flex items-start justify-between mb-3">
@@ -504,7 +505,7 @@ export default function StockDiscovery({
       )}
 
       {/* Last Updated */}
-      {lastRefresh && (
+      {lastRefresh && !compact && (
         <div className="mt-4 text-xs text-steel text-center">
           Last updated: {lastRefresh.toLocaleTimeString()}
         </div>

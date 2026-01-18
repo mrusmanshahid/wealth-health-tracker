@@ -26,7 +26,8 @@ export default function InvestableCash({
   portfolioStocks = [],
   watchlistStocks = [],
   undervaluedStocks = [],
-  onBuyStock
+  onBuyStock,
+  compact = false
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -123,6 +124,106 @@ export default function InvestableCash({
   };
 
   const recentTransactions = cashTransactions.slice(0, 5);
+
+  // Compact view for sidebar
+  if (compact) {
+    return (
+      <div className="glass-card p-4 h-full">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-cyan-400" />
+            <span className="font-semibold text-pearl">Cash</span>
+          </div>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="p-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
+        
+        <div className="text-3xl font-bold text-white font-mono mb-3">
+          ${cashBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </div>
+        
+        {/* Quick stats */}
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between">
+            <span className="text-steel">Deposited</span>
+            <span className="text-emerald-400 font-mono">
+              +${cashTransactions.filter(t => t.type === 'deposit').reduce((s, t) => s + t.amount, 0).toLocaleString()}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-steel">Invested</span>
+            <span className="text-cyan-400 font-mono">
+              -${cashTransactions.filter(t => t.type === 'buy').reduce((s, t) => s + t.amount, 0).toLocaleString()}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-steel">From Sales</span>
+            <span className="text-violet-400 font-mono">
+              +${cashTransactions.filter(t => t.type === 'sell').reduce((s, t) => s + t.amount, 0).toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {/* Top Suggestion */}
+        {suggestions.length > 0 && suggestions[0].symbol && (
+          <div className="mt-4 pt-3 border-t border-slate-light/20">
+            <p className="text-xs text-steel mb-2 flex items-center gap-1">
+              <Lightbulb className="w-3 h-3 text-amber-400" />
+              Suggestion
+            </p>
+            <button
+              onClick={() => onBuyStock({ symbol: suggestions[0].symbol, name: suggestions[0].name })}
+              className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg text-xs font-medium transition-colors"
+            >
+              Buy {suggestions[0].symbol}
+            </button>
+          </div>
+        )}
+
+        {/* Add/Withdraw Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-midnight/80 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
+            <div className="relative glass-card w-full max-w-md p-6">
+              <h3 className="text-xl font-bold text-pearl mb-4 flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-cyan-400" />
+                {isDeposit ? 'Add Funds' : 'Withdraw Funds'}
+              </h3>
+              <div className="flex gap-2 mb-4">
+                <button onClick={() => setIsDeposit(true)} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${isDeposit ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-dark/50 text-steel'}`}>
+                  <Plus className="w-4 h-4 inline mr-1" />Deposit
+                </button>
+                <button onClick={() => setIsDeposit(false)} className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${!isDeposit ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-slate-dark/50 text-steel'}`}>
+                  <Minus className="w-4 h-4 inline mr-1" />Withdraw
+                </button>
+              </div>
+              <form onSubmit={handleSubmit}>
+                <div className="mb-4">
+                  <label className="block text-sm text-steel mb-2">Amount</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+                    <input type="number" step="0.01" placeholder="0.00" value={addAmount} onChange={(e) => setAddAmount(e.target.value)} className="w-full bg-slate-dark/50 border border-slate-light/30 rounded-xl pl-10 pr-4 py-3 text-pearl text-lg font-mono focus:outline-none focus:border-cyan-500" required autoFocus />
+                  </div>
+                </div>
+                <div className="mb-6">
+                  <label className="block text-sm text-steel mb-2">Note (optional)</label>
+                  <input type="text" placeholder="e.g., Monthly investment..." value={addNote} onChange={(e) => setAddNote(e.target.value)} className="w-full bg-slate-dark/50 border border-slate-light/30 rounded-xl px-4 py-3 text-pearl focus:outline-none focus:border-cyan-500" />
+                </div>
+                <div className="flex gap-3">
+                  <button type="button" onClick={() => setShowAddModal(false)} className="flex-1 py-3 bg-slate-dark/50 text-steel rounded-xl font-medium hover:bg-slate-dark transition-colors">Cancel</button>
+                  <button type="submit" className={`flex-1 py-3 rounded-xl font-medium transition-colors ${isDeposit ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400' : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-400'}`}>{isDeposit ? 'Add Funds' : 'Withdraw'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card p-6 mb-8">

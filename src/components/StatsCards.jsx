@@ -15,7 +15,7 @@ export default function StatsCards({ metrics }) {
   const isPositiveForecast = projectedReturn5Y >= 0;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
       {/* Total Invested */}
       <div className="stat-card">
         <div className="flex items-center gap-3 mb-3">

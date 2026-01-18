@@ -549,33 +549,49 @@ function App() {
           />
         ) : (
           <>
-            {/* Stats Overview */}
-            <StatsCards metrics={metrics} />
-
-            {/* Investable Cash Section */}
-            <InvestableCash
-              cashBalance={cashBalance}
-              cashTransactions={cashTransactions}
-              onAddCash={handleAddCash}
-              onWithdrawCash={handleWithdrawCash}
-              portfolioStocks={stocks}
-              watchlistStocks={watchlist}
-              undervaluedStocks={undervaluedStocks}
-              onBuyStock={handleAddFromDiscovery}
-            />
-
-            {/* Main Wealth Chart */}
-            <div className="mb-8">
-              <WealthChart 
-                wealthData={wealthData} 
-                monthlyContribution={totalMonthlyContribution}
-              />
+            {/* Top Row: Stats + Cash Side by Side */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+              <div className="lg:col-span-2">
+                <StatsCards metrics={metrics} />
+              </div>
+              <div className="lg:col-span-1">
+                <InvestableCash
+                  cashBalance={cashBalance}
+                  cashTransactions={cashTransactions}
+                  onAddCash={handleAddCash}
+                  onWithdrawCash={handleWithdrawCash}
+                  portfolioStocks={stocks}
+                  watchlistStocks={watchlist}
+                  undervaluedStocks={undervaluedStocks}
+                  onBuyStock={handleAddFromDiscovery}
+                  compact={true}
+                />
+              </div>
             </div>
 
-            {/* Stocks Grid */}
-            <div className="mb-8">
+            {/* Main Content: Chart + Watchlist Side by Side */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 mb-6">
+              <div className="xl:col-span-3">
+                <WealthChart 
+                  wealthData={wealthData} 
+                  monthlyContribution={totalMonthlyContribution}
+                />
+              </div>
+              <div className="xl:col-span-1">
+                <Watchlist
+                  watchlist={watchlist}
+                  onAddToWatchlist={handleAddToWatchlist}
+                  onRemoveFromWatchlist={handleRemoveFromWatchlist}
+                  onAddToPortfolio={handleAddFromWatchlist}
+                  compact={true}
+                />
+              </div>
+            </div>
+
+            {/* Holdings Grid */}
+            <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-pearl">Your Holdings</h2>
+                <h2 className="text-xl font-bold text-pearl">Your Holdings ({stocks.length})</h2>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowSettings(true)}
@@ -594,7 +610,7 @@ function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                 {stocks.map((stock) => (
                   <StockCard
                     key={stock.symbol}
@@ -608,24 +624,17 @@ function App() {
               </div>
             </div>
 
-            {/* Watchlist Section */}
-            <Watchlist
-              watchlist={watchlist}
-              onAddToWatchlist={handleAddToWatchlist}
-              onRemoveFromWatchlist={handleRemoveFromWatchlist}
-              onAddToPortfolio={handleAddFromWatchlist}
-            />
-
-            {/* Stock Discovery Section */}
-            <StockDiscovery
-              portfolioSymbols={stocks.map(s => s.symbol)}
-              watchlistSymbols={watchlist.map(w => w.symbol)}
-              onAddToWatchlist={handleAddToWatchlist}
-              onAddToPortfolio={handleAddFromDiscovery}
-            />
-
-            {/* News Section */}
-            <NewsSection symbols={stocks.map(s => s.symbol)} />
+            {/* Discovery + News Side by Side */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <StockDiscovery
+                portfolioSymbols={stocks.map(s => s.symbol)}
+                watchlistSymbols={watchlist.map(w => w.symbol)}
+                onAddToWatchlist={handleAddToWatchlist}
+                onAddToPortfolio={handleAddFromDiscovery}
+                compact={true}
+              />
+              <NewsSection symbols={stocks.map(s => s.symbol)} compact={true} />
+            </div>
           </>
         )}
 
