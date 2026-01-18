@@ -61,6 +61,34 @@ export async function fetchStockHistory(symbol, years = 10) {
   }
 }
 
+// Helper function to fetch market cap from quoteSummary
+async function fetchMarketCapFromSummary(symbol) {
+  try {
+    const url = `${CORS_PROXY}${encodeURIComponent(
+      `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=price,summaryDetail`
+    )}`;
+    const response = await fetch(url);
+    if (response.ok) {
+      const data = await response.json();
+      const price = data.quoteSummary?.result?.[0]?.price || {};
+      const summary = data.quoteSummary?.result?.[0]?.summaryDetail || {};
+      return {
+        marketCap: price.marketCap?.raw || summary.marketCap?.raw || 0,
+        peRatio: summary.trailingPE?.raw || price.trailingPE?.raw || 0,
+        volume: price.regularMarketVolume?.raw || summary.volume?.raw || 0,
+        avgVolume: price.averageDailyVolume10Day?.raw || summary.averageVolume10days?.raw || 0,
+        fiftyTwoWeekHigh: summary.fiftyTwoWeekHigh?.raw || 0,
+        fiftyTwoWeekLow: summary.fiftyTwoWeekLow?.raw || 0,
+        dayHigh: price.regularMarketDayHigh?.raw || summary.dayHigh?.raw || 0,
+        dayLow: price.regularMarketDayLow?.raw || summary.dayLow?.raw || 0,
+      };
+    }
+  } catch (e) {
+    console.log('quoteSummary failed:', e.message);
+  }
+  return null;
+}
+
 export async function fetchStockQuote(symbol) {
   // Helper to parse quote response
   const parseQuoteResponse = (quote) => ({
@@ -83,6 +111,8 @@ export async function fetchStockQuote(symbol) {
     quoteType: quote.quoteType || '',
   });
   
+  let baseQuote = null;
+  
   try {
     // Try v7 quote endpoint first (most reliable for comprehensive data)
     const v7Url = `${CORS_PROXY}${encodeURIComponent(
@@ -94,70 +124,94 @@ export async function fetchStockQuote(symbol) {
       const v7Data = await v7Response.json();
       const quote = v7Data.quoteResponse?.result?.[0];
       if (quote && quote.regularMarketPrice) {
-        return parseQuoteResponse(quote);
+        baseQuote = parseQuoteResponse(quote);
       }
     }
   } catch (e) {
     console.log('v7 quote failed, trying v6:', e.message);
   }
   
-  try {
-    // Try v6 quote endpoint
-    const v6Url = `${CORS_PROXY}${encodeURIComponent(
-      `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${symbol}`
-    )}`;
-    
-    const v6Response = await fetch(v6Url);
-    if (v6Response.ok) {
-      const v6Data = await v6Response.json();
-      const quote = v6Data.quoteResponse?.result?.[0];
-      if (quote && quote.regularMarketPrice) {
-        return parseQuoteResponse(quote);
+  if (!baseQuote) {
+    try {
+      // Try v6 quote endpoint
+      const v6Url = `${CORS_PROXY}${encodeURIComponent(
+        `https://query1.finance.yahoo.com/v6/finance/quote?symbols=${symbol}`
+      )}`;
+      
+      const v6Response = await fetch(v6Url);
+      if (v6Response.ok) {
+        const v6Data = await v6Response.json();
+        const quote = v6Data.quoteResponse?.result?.[0];
+        if (quote && quote.regularMarketPrice) {
+          baseQuote = parseQuoteResponse(quote);
+        }
       }
+    } catch (e) {
+      console.log('v6 quote failed, trying chart:', e.message);
     }
-  } catch (e) {
-    console.log('v6 quote failed, trying chart:', e.message);
   }
   
-  try {
-    // Fallback to chart API
-    const chartUrl = `${CORS_PROXY}${encodeURIComponent(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`
-    )}`;
-    
-    const chartResponse = await fetch(chartUrl);
-    const chartData = await chartResponse.json();
-    
-    const result = chartData.chart?.result?.[0];
-    const meta = result?.meta || {};
-    const quotes = result?.indicators?.quote?.[0] || {};
-    
-    const timestamps = result?.timestamp || [];
-    const lastIndex = timestamps.length - 1;
-    const price = meta.regularMarketPrice || 0;
-    const prevClose = meta.previousClose || meta.chartPreviousClose || 0;
-    
-    return {
-      symbol: symbol.toUpperCase(),
-      name: meta.longName || meta.shortName || symbol,
-      price,
-      previousClose: prevClose,
-      change: price - prevClose,
-      changePercent: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
-      currency: meta.currency || 'USD',
-      dayHigh: quotes.high?.[lastIndex] || meta.regularMarketDayHigh || 0,
-      dayLow: quotes.low?.[lastIndex] || meta.regularMarketDayLow || 0,
-      fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
-      fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
-      volume: quotes.volume?.[lastIndex] || meta.regularMarketVolume || 0,
-      avgVolume: meta.averageDailyVolume10Day || meta.averageDailyVolume3Month || 0,
-      marketCap: meta.marketCap || 0,
-      peRatio: 0,
-    };
-  } catch (error) {
-    console.error(`Error fetching quote for ${symbol}:`, error);
-    throw error;
+  if (!baseQuote) {
+    try {
+      // Fallback to chart API
+      const chartUrl = `${CORS_PROXY}${encodeURIComponent(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=5d`
+      )}`;
+      
+      const chartResponse = await fetch(chartUrl);
+      const chartData = await chartResponse.json();
+      
+      const result = chartData.chart?.result?.[0];
+      const meta = result?.meta || {};
+      const quotes = result?.indicators?.quote?.[0] || {};
+      
+      const timestamps = result?.timestamp || [];
+      const lastIndex = timestamps.length - 1;
+      const price = meta.regularMarketPrice || 0;
+      const prevClose = meta.previousClose || meta.chartPreviousClose || 0;
+      
+      baseQuote = {
+        symbol: symbol.toUpperCase(),
+        name: meta.longName || meta.shortName || symbol,
+        price,
+        previousClose: prevClose,
+        change: price - prevClose,
+        changePercent: prevClose ? ((price - prevClose) / prevClose) * 100 : 0,
+        currency: meta.currency || 'USD',
+        dayHigh: quotes.high?.[lastIndex] || meta.regularMarketDayHigh || 0,
+        dayLow: quotes.low?.[lastIndex] || meta.regularMarketDayLow || 0,
+        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
+        fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
+        volume: quotes.volume?.[lastIndex] || meta.regularMarketVolume || 0,
+        avgVolume: meta.averageDailyVolume10Day || meta.averageDailyVolume3Month || 0,
+        marketCap: 0,
+        peRatio: 0,
+      };
+    } catch (error) {
+      console.error(`Error fetching quote for ${symbol}:`, error);
+      throw error;
+    }
   }
+  
+  // If we don't have market cap, try to fetch it from quoteSummary
+  if (baseQuote && (!baseQuote.marketCap || baseQuote.marketCap === 0)) {
+    const summaryData = await fetchMarketCapFromSummary(symbol);
+    if (summaryData) {
+      baseQuote = {
+        ...baseQuote,
+        marketCap: summaryData.marketCap || baseQuote.marketCap,
+        peRatio: summaryData.peRatio || baseQuote.peRatio,
+        volume: baseQuote.volume || summaryData.volume,
+        avgVolume: baseQuote.avgVolume || summaryData.avgVolume,
+        fiftyTwoWeekHigh: baseQuote.fiftyTwoWeekHigh || summaryData.fiftyTwoWeekHigh,
+        fiftyTwoWeekLow: baseQuote.fiftyTwoWeekLow || summaryData.fiftyTwoWeekLow,
+        dayHigh: baseQuote.dayHigh || summaryData.dayHigh,
+        dayLow: baseQuote.dayLow || summaryData.dayLow,
+      };
+    }
+  }
+  
+  return baseQuote;
 }
 
 export async function searchStocks(query) {
