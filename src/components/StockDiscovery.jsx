@@ -14,7 +14,8 @@ import {
   Star,
   Layers,
   BadgePercent,
-  Rocket
+  Rocket,
+  FileText
 } from 'lucide-react';
 import { 
   fetchTrendingStocks, 
@@ -24,6 +25,7 @@ import {
   fetchUndervaluedStocks,
   fetchGrowthStocks
 } from '../services/stockApi';
+import QuickStockView from './QuickStockView';
 
 export default function StockDiscovery({ 
   portfolioSymbols = [],
@@ -41,6 +43,7 @@ export default function StockDiscovery({
   const [growthStocks, setGrowthStocks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [selectedStock, setSelectedStock] = useState(null);
 
   useEffect(() => {
     loadDiscoveryData();
@@ -247,17 +250,23 @@ export default function StockDiscovery({
                     </div>
 
                     {/* Actions */}
-                    {!inPortfolio && (
-                      <div className="flex gap-2">
-                        {!inWatchlist && (
-                          <button
-                            onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
-                            className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                          >
-                            <Eye className="w-3 h-3" />
-                            Watch
-                          </button>
-                        )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedStock(stock)}
+                        className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                      >
+                        <FileText className="w-3 h-3" />
+                      </button>
+                      {!inPortfolio && !inWatchlist && (
+                        <button
+                          onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
+                          className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Watch
+                        </button>
+                      )}
+                      {!inPortfolio && (
                         <button
                           onClick={() => onAddToPortfolio({ symbol: stock.symbol, name: stock.name })}
                           className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
@@ -265,8 +274,8 @@ export default function StockDiscovery({
                           <Plus className="w-3 h-3" />
                           Buy
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -346,17 +355,24 @@ export default function StockDiscovery({
                     )}
 
                     {/* Actions */}
-                    {!inPortfolio && (
-                      <div className="flex gap-2">
-                        {!inWatchlist && (
-                          <button
-                            onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
-                            className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                          >
-                            <Eye className="w-3 h-3" />
-                            Watch
-                          </button>
-                        )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedStock(stock)}
+                        className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                        title="View Financials"
+                      >
+                        <FileText className="w-3 h-3" />
+                      </button>
+                      {!inPortfolio && !inWatchlist && (
+                        <button
+                          onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
+                          className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Watch
+                        </button>
+                      )}
+                      {!inPortfolio && (
                         <button
                           onClick={() => onAddToPortfolio({ symbol: stock.symbol, name: stock.name })}
                           className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
@@ -364,8 +380,8 @@ export default function StockDiscovery({
                           <Plus className="w-3 h-3" />
                           Buy
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -445,26 +461,33 @@ export default function StockDiscovery({
                     </div>
 
                     {/* Actions */}
-                    {!inPortfolio && (
-                      <div className="flex gap-2">
-                        {!inWatchlist && (
-                          <button
-                            onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
-                            className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                          >
-                            <Eye className="w-3 h-3" />
-                            Watch
-                          </button>
-                        )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setSelectedStock(stock)}
+                        className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                        title="View Financials"
+                      >
+                        <FileText className="w-3 h-3" />
+                      </button>
+                      {!inPortfolio && !inWatchlist && (
+                        <button
+                          onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
+                          className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
+                        >
+                          <Eye className="w-3 h-3" />
+                          Watch
+                        </button>
+                      )}
+                      {!inPortfolio && (
                         <button
                           onClick={() => onAddToPortfolio({ symbol: stock.symbol, name: stock.name })}
-                          className={`${inWatchlist ? 'flex-1' : 'flex-1'} py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1`}
+                          className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
                         >
                           <Plus className="w-3 h-3" />
                           Buy
                         </button>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -485,6 +508,18 @@ export default function StockDiscovery({
         <div className="mt-4 text-xs text-steel text-center">
           Last updated: {lastRefresh.toLocaleTimeString()}
         </div>
+      )}
+
+      {/* Quick Stock View Modal */}
+      {selectedStock && (
+        <QuickStockView
+          stock={selectedStock}
+          onClose={() => setSelectedStock(null)}
+          onAddToWatchlist={onAddToWatchlist}
+          onAddToPortfolio={onAddToPortfolio}
+          isInWatchlist={isInWatchlist(selectedStock.symbol)}
+          isInPortfolio={isInPortfolio(selectedStock.symbol)}
+        />
       )}
     </div>
   );

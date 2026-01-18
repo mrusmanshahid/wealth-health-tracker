@@ -9,9 +9,11 @@ import {
   Star,
   ArrowRight,
   X,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { searchStocks, fetchStockQuote } from '../services/stockApi';
+import QuickStockView from './QuickStockView';
 
 export default function Watchlist({ 
   watchlist = [], 
@@ -25,6 +27,7 @@ export default function Watchlist({
   const [isSearching, setIsSearching] = useState(false);
   const [watchlistData, setWatchlistData] = useState([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedStock, setSelectedStock] = useState(null);
 
   // Fetch quotes for watchlist stocks
   useEffect(() => {
@@ -217,13 +220,22 @@ export default function Watchlist({
                   )}
                 </div>
                 
-                <button
-                  onClick={() => onAddToPortfolio(stock)}
-                  className="mt-3 w-full py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                >
-                  Add to Portfolio
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => setSelectedStock(stock)}
+                    className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center"
+                    title="View Financials"
+                  >
+                    <FileText className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => onAddToPortfolio(stock)}
+                    className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    Add to Portfolio
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             );
           })}
@@ -234,6 +246,18 @@ export default function Watchlist({
           <p className="text-sm">No stocks in your watchlist</p>
           <p className="text-xs mt-1">Add stocks you want to keep an eye on</p>
         </div>
+      )}
+
+      {/* Quick Stock View Modal */}
+      {selectedStock && (
+        <QuickStockView
+          stock={selectedStock}
+          onClose={() => setSelectedStock(null)}
+          onAddToWatchlist={null}
+          onAddToPortfolio={onAddToPortfolio}
+          isInWatchlist={true}
+          isInPortfolio={false}
+        />
       )}
     </div>
   );
