@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText, Receipt } from 'lucide-react';
-import PortfolioChart from './PortfolioChart';
-import ContributionGrowthChart from './ContributionGrowthChart';
+import UnifiedStockChart from './UnifiedStockChart';
 import EarningsReport from './EarningsReport';
 import TransactionHistory from './TransactionHistory';
 import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
@@ -205,29 +204,13 @@ export default function StockDetailModal({ stock, onClose, onAddTransaction, onD
               </div>
             </div>
 
-            {/* Historical Chart */}
+            {/* Unified Chart - Historical + Projections */}
             <div className="mb-6">
-              <PortfolioChart stock={stock} showForecast={true} />
+              <UnifiedStockChart 
+                stock={stock} 
+                monthlyContribution={stock.monthlyContribution || 0}
+              />
             </div>
-
-            {/* Monthly Contribution Growth Chart */}
-            {stock.monthlyContribution > 0 && (
-              <div className="glass-card p-4 mb-6 bg-slate-dark/30">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <PiggyBank className="w-5 h-5 text-amber-bright" />
-                    <h3 className="text-sm font-semibold text-silver uppercase tracking-wide">
-                      Monthly Contribution Growth (${stock.monthlyContribution}/mo)
-                    </h3>
-                  </div>
-                </div>
-                <ContributionGrowthChart 
-                  stock={stock} 
-                  monthlyContribution={stock.monthlyContribution}
-                  fullWidth={true}
-                />
-              </div>
-            )}
 
             {/* Purchase Info */}
             <div className="pt-4 border-t border-slate-light/30 flex flex-wrap items-center gap-4 text-sm text-steel">
