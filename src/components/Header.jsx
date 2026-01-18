@@ -1,6 +1,6 @@
-import { Heart, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
+import { Heart, TrendingUp, TrendingDown } from 'lucide-react';
 
-export default function Header({ onRefresh, isLoading, netWorth = 0, totalReturn = 0, totalReturnPercent = 0 }) {
+export default function Header({ netWorth = 0, totalReturn = 0, totalReturnPercent = 0 }) {
   const isPositive = totalReturn >= 0;
   
   return (
@@ -41,25 +41,15 @@ export default function Header({ onRefresh, isLoading, netWorth = 0, totalReturn
           </div>
         )}
         
-        <div className="flex items-center gap-3">
-          {/* Mobile Net Worth */}
-          {netWorth > 0 && (
-            <div className="md:hidden text-right mr-2">
-              <span className="text-xs text-steel block">Net Worth</span>
-              <span className="text-lg font-bold font-mono text-emerald-bright">
-                ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-              </span>
-            </div>
-          )}
-          <button
-            onClick={onRefresh}
-            disabled={isLoading}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{isLoading ? 'Updating...' : 'Refresh'}</span>
-          </button>
-        </div>
+        {/* Mobile Net Worth */}
+        {netWorth > 0 && (
+          <div className="md:hidden text-right">
+            <span className="text-xs text-steel block">Net Worth</span>
+            <span className="text-lg font-bold font-mono text-emerald-bright">
+              ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </span>
+          </div>
+        )}
       </div>
     </header>
   );

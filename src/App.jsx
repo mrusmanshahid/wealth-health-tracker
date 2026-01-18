@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Settings, Loader2 } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Plus, Settings, Loader2, RefreshCw } from 'lucide-react';
 
 import Header from './components/Header';
 import StatsCards from './components/StatsCards';
@@ -46,6 +46,7 @@ function App() {
   const [cashBalance, setCashBalance] = useState(0);
   const [cashTransactions, setCashTransactions] = useState([]);
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
+  const [lastRefresh, setLastRefresh] = useState(null);
 
   // Load saved data on mount
   useEffect(() => {
@@ -165,11 +166,23 @@ function App() {
     setError(null);
     try {
       await refreshStockData(stocks);
+      setLastRefresh(new Date());
     } catch (err) {
       setError('Failed to refresh data');
     }
     setIsRefreshing(false);
   };
+
+  // Auto-refresh portfolio every 5 minutes
+  useEffect(() => {
+    if (stocks.length === 0) return;
+    
+    const interval = setInterval(() => {
+      handleRefresh();
+    }, 5 * 60 * 1000); // 5 minutes
+    
+    return () => clearInterval(interval);
+  }, [stocks.length]);
 
   const handleAddStock = async (newStock) => {
     setIsRefreshing(true);
@@ -529,8 +542,6 @@ function App() {
 
       <div className="relative max-w-7xl mx-auto px-4 py-8">
         <Header 
-          onRefresh={handleRefresh} 
-          isLoading={isRefreshing}
           netWorth={metrics.currentValue + cashBalance}
           totalReturn={metrics.totalReturn}
           totalReturnPercent={metrics.totalReturnPercent}
@@ -598,21 +609,36 @@ function App() {
             {/* Holdings Grid */}
             <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-pearl">Your Holdings ({stocks.length})</h2>
+                <div className="flex items-center gap-3">
+                  <h2 className="text-xl font-bold text-pearl">Your Holdings ({stocks.length})</h2>
+                  <button
+                    onClick={handleRefresh}
+                    disabled={isRefreshing}
+                    className="p-1.5 rounded-lg hover:bg-slate-light/30 text-steel hover:text-emerald-bright transition-colors disabled:opacity-50"
+                    title="Refresh prices"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  </button>
+                  {lastRefresh && (
+                    <span className="text-xs text-steel">
+                      Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowSettings(true)}
                     className="btn-secondary flex items-center gap-2"
                   >
                     <Settings className="w-4 h-4" />
-                    Settings
+                    <span className="hidden sm:inline">Settings</span>
                   </button>
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="btn-primary flex items-center gap-2"
                   >
                     <Plus className="w-4 h-4" />
-                    Add Stock
+                    <span className="hidden sm:inline">Add Stock</span>
                   </button>
                 </div>
               </div>
