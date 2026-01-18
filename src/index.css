@@ -150,7 +150,7 @@
   .stat-card {
     background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(17, 24, 39, 0.7) 100%);
     border: 1px solid rgba(100, 116, 139, 0.15);
-    border-radius: 12px;
+    border-radius: 12px 12px 4px 4px;
     padding: 12px 14px;
     position: relative;
     overflow: hidden;
@@ -182,9 +182,10 @@
 
   .chart-container {
     background: linear-gradient(180deg, rgba(30, 41, 59, 0.4) 0%, rgba(17, 24, 39, 0.6) 100%);
-    border-radius: 16px;
+    border-radius: 4px 4px 16px 16px;
     padding: 16px;
     border: 1px solid rgba(100, 116, 139, 0.15);
+    border-top: none;
   }
 
   .line-clamp-2 {

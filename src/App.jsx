@@ -549,12 +549,23 @@ function App() {
           />
         ) : (
           <>
-            {/* Top Row: Stats + Cash Side by Side */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
-              <div className="lg:col-span-3">
+            {/* Unified Dashboard Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
+              {/* Left: Stats + Chart stacked */}
+              <div className="lg:col-span-3 space-y-0">
+                {/* Stats Cards - no bottom margin, connected to chart */}
                 <StatsCards metrics={metrics} />
+                {/* Wealth Chart - connected below stats */}
+                <div className="mt-2">
+                  <WealthChart 
+                    wealthData={wealthData} 
+                    monthlyContribution={totalMonthlyContribution}
+                  />
+                </div>
               </div>
-              <div className="lg:col-span-1">
+              
+              {/* Right Sidebar: Cash + Watchlist stacked */}
+              <div className="lg:col-span-1 flex flex-col gap-4">
                 <InvestableCash
                   cashBalance={cashBalance}
                   cashTransactions={cashTransactions}
@@ -566,25 +577,15 @@ function App() {
                   onBuyStock={handleAddFromDiscovery}
                   compact={true}
                 />
-              </div>
-            </div>
-
-            {/* Main Content: Chart + Watchlist Side by Side */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-              <div className="lg:col-span-3">
-                <WealthChart 
-                  wealthData={wealthData} 
-                  monthlyContribution={totalMonthlyContribution}
-                />
-              </div>
-              <div className="lg:col-span-1">
-                <Watchlist
-                  watchlist={watchlist}
-                  onAddToWatchlist={handleAddToWatchlist}
-                  onRemoveFromWatchlist={handleRemoveFromWatchlist}
-                  onAddToPortfolio={handleAddFromWatchlist}
-                  compact={true}
-                />
+                <div className="flex-1">
+                  <Watchlist
+                    watchlist={watchlist}
+                    onAddToWatchlist={handleAddToWatchlist}
+                    onRemoveFromWatchlist={handleRemoveFromWatchlist}
+                    onAddToPortfolio={handleAddFromWatchlist}
+                    compact={true}
+                  />
+                </div>
               </div>
             </div>
 
