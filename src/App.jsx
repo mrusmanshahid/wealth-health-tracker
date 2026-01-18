@@ -657,17 +657,16 @@ function App() {
               </div>
             </div>
 
-            {/* Discovery + News Side by Side */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-              <StockDiscovery
-                portfolioSymbols={stocks.map(s => s.symbol)}
-                watchlistSymbols={watchlist.map(w => w.symbol)}
-                onAddToWatchlist={handleAddToWatchlist}
-                onAddToPortfolio={handleAddFromDiscovery}
-                compact={true}
-              />
-              <NewsSection symbols={stocks.map(s => s.symbol)} compact={true} />
-            </div>
+            {/* Stock Discovery - Full Width */}
+            <StockDiscovery
+              portfolioSymbols={stocks.map(s => s.symbol)}
+              watchlistSymbols={watchlist.map(w => w.symbol)}
+              onAddToWatchlist={handleAddToWatchlist}
+              onAddToPortfolio={handleAddFromDiscovery}
+            />
+
+            {/* News Section */}
+            <NewsSection symbols={stocks.map(s => s.symbol)} />
           </>
         )}
 

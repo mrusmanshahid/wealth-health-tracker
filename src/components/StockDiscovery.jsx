@@ -1,21 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, 
   TrendingUp, 
   TrendingDown,
   Flame,
-  Zap,
   Target,
   RefreshCw,
+  ChevronLeft,
   ChevronRight,
   Plus,
   Eye,
-  BarChart3,
   Star,
   Layers,
   BadgePercent,
   Rocket,
-  FileText
+  FileText,
+  Zap,
+  Crown
 } from 'lucide-react';
 import { 
   fetchTrendingStocks, 
@@ -27,6 +28,269 @@ import {
 } from '../services/stockApi';
 import QuickStockView from './QuickStockView';
 
+// Horizontal scroll carousel component
+function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onViewDetails, isInPortfolio, isInWatchlist }) {
+  const scrollRef = useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScroll = () => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      setCanScrollLeft(scrollLeft > 0);
+      setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    }
+  };
+
+  const scroll = (direction) => {
+    if (scrollRef.current) {
+      const scrollAmount = 320;
+      scrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  useEffect(() => {
+    checkScroll();
+    const ref = scrollRef.current;
+    if (ref) {
+      ref.addEventListener('scroll', checkScroll);
+      return () => ref.removeEventListener('scroll', checkScroll);
+    }
+  }, [stocks]);
+
+  if (!stocks || stocks.length === 0) return null;
+
+  const colorClasses = {
+    violet: 'from-violet-500/20 to-violet-600/10 border-violet-500/30 text-violet-400',
+    emerald: 'from-emerald-500/20 to-emerald-600/10 border-emerald-500/30 text-emerald-400',
+    amber: 'from-amber-500/20 to-amber-600/10 border-amber-500/30 text-amber-400',
+    cyan: 'from-cyan-500/20 to-cyan-600/10 border-cyan-500/30 text-cyan-400',
+    rose: 'from-rose-500/20 to-rose-600/10 border-rose-500/30 text-rose-400',
+  };
+
+  return (
+    <div className="mb-6">
+      {/* Section Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div className={`p-1.5 rounded-lg bg-gradient-to-br ${colorClasses[color]}`}>
+            <Icon className="w-4 h-4" />
+          </div>
+          <h3 className="font-semibold text-pearl">{title}</h3>
+          <span className="text-xs text-steel">({stocks.length})</span>
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={() => scroll('left')}
+            disabled={!canScrollLeft}
+            className="p-1.5 rounded-lg bg-slate-dark/50 text-steel hover:text-pearl disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => scroll('right')}
+            disabled={!canScrollRight}
+            className="p-1.5 rounded-lg bg-slate-dark/50 text-steel hover:text-pearl disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Scrollable Cards */}
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto scrollbar-hide pb-2"
+        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
+        {stocks.map((stock, idx) => {
+          const isUp = (stock.changePercent || 0) >= 0;
+          const inPortfolio = isInPortfolio(stock.symbol);
+          const inWatchlist = isInWatchlist(stock.symbol);
+
+          return (
+            <div
+              key={stock.symbol || idx}
+              className="flex-shrink-0 w-[280px] bg-gradient-to-br from-slate-dark/80 to-slate-dark/40 rounded-xl p-4 border border-slate-light/20 hover:border-violet-500/40 transition-all group"
+            >
+              {/* Top Row */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-pearl text-lg">{stock.symbol}</span>
+                    {idx < 3 && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        idx === 0 ? 'bg-amber-500/20 text-amber-400' : 
+                        idx === 1 ? 'bg-slate-light/30 text-silver' : 
+                        'bg-orange-900/30 text-orange-400'
+                      }`}>
+                        #{idx + 1}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-steel truncate">{stock.name}</p>
+                </div>
+                {inPortfolio && (
+                  <span className="px-2 py-0.5 bg-emerald-500/20 rounded text-xs text-emerald-400 flex-shrink-0">
+                    Owned
+                  </span>
+                )}
+                {inWatchlist && !inPortfolio && (
+                  <Star className="w-4 h-4 text-amber-400 fill-amber-400 flex-shrink-0" />
+                )}
+              </div>
+
+              {/* Price */}
+              <div className="mb-3">
+                <div className="text-2xl font-bold text-pearl font-mono">
+                  ${stock.price?.toFixed(2) || '—'}
+                </div>
+                <div className={`text-sm flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                  {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                  {isUp ? '+' : ''}{stock.changePercent?.toFixed(2) || 0}%
+                  <span className="text-steel ml-1">today</span>
+                </div>
+              </div>
+
+              {/* Extra Info */}
+              {stock.discountFromHigh && (
+                <div className="mb-3 px-2 py-1.5 bg-emerald-500/10 rounded-lg">
+                  <span className="text-xs text-emerald-400 flex items-center gap-1">
+                    <BadgePercent className="w-3 h-3" />
+                    {stock.discountFromHigh}% below 52W high
+                  </span>
+                </div>
+              )}
+
+              {stock.sector && (
+                <div className="mb-3 px-2 py-1.5 bg-violet-500/10 rounded-lg">
+                  <span className="text-xs text-violet-400 flex items-center gap-1">
+                    <Layers className="w-3 h-3" />
+                    {stock.sector}
+                  </span>
+                </div>
+              )}
+
+              {/* Quick Actions */}
+              <div className="flex gap-2 mt-auto">
+                <button
+                  onClick={() => onViewDetails(stock)}
+                  className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg transition-colors"
+                  title="View Details"
+                >
+                  <FileText className="w-4 h-4" />
+                </button>
+                {!inPortfolio && !inWatchlist && (
+                  <button
+                    onClick={() => onWatch(stock)}
+                    className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Watch
+                  </button>
+                )}
+                {!inPortfolio && (
+                  <button
+                    onClick={() => onBuy(stock)}
+                    className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-1"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Buy
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Featured stock card (larger)
+function FeaturedStock({ stock, label, color, onWatch, onBuy, onViewDetails, isInPortfolio, isInWatchlist }) {
+  if (!stock) return null;
+  
+  const isUp = (stock.changePercent || 0) >= 0;
+  const inPortfolio = isInPortfolio(stock.symbol);
+  const inWatchlist = isInWatchlist(stock.symbol);
+
+  const colorStyles = {
+    gold: 'from-amber-500/30 via-yellow-500/20 to-orange-500/20 border-amber-500/40',
+    emerald: 'from-emerald-500/30 via-cyan-500/20 to-teal-500/20 border-emerald-500/40',
+    violet: 'from-violet-500/30 via-purple-500/20 to-indigo-500/20 border-violet-500/40',
+  };
+
+  return (
+    <div className={`relative bg-gradient-to-br ${colorStyles[color]} rounded-2xl p-5 border overflow-hidden`}>
+      {/* Glow effect */}
+      <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+      
+      {/* Label */}
+      <div className="flex items-center gap-2 mb-3">
+        <Crown className="w-4 h-4 text-amber-400" />
+        <span className="text-xs font-semibold text-amber-400 uppercase tracking-wider">{label}</span>
+      </div>
+
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-3 mb-1">
+            <span className="text-2xl font-bold text-pearl">{stock.symbol}</span>
+            {inPortfolio && (
+              <span className="px-2 py-0.5 bg-emerald-500/30 rounded text-xs text-emerald-400">Owned</span>
+            )}
+          </div>
+          <p className="text-sm text-silver mb-3">{stock.name}</p>
+          
+          <div className="flex items-end gap-4">
+            <div>
+              <p className="text-3xl font-bold text-pearl font-mono">${stock.price?.toFixed(2)}</p>
+              <div className={`flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                {isUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                <span className="font-semibold">{isUp ? '+' : ''}{stock.changePercent?.toFixed(2)}%</span>
+              </div>
+            </div>
+            
+            {stock.discountFromHigh && (
+              <div className="px-3 py-1.5 bg-emerald-500/20 rounded-lg">
+                <span className="text-sm text-emerald-400 font-medium">{stock.discountFromHigh}% off high</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => onViewDetails(stock)}
+            className="p-2.5 bg-slate-dark/50 hover:bg-slate-dark/70 text-pearl rounded-xl transition-colors"
+          >
+            <FileText className="w-5 h-5" />
+          </button>
+          {!inWatchlist && !inPortfolio && (
+            <button
+              onClick={() => onWatch(stock)}
+              className="p-2.5 bg-amber-500/30 hover:bg-amber-500/40 text-amber-400 rounded-xl transition-colors"
+            >
+              <Eye className="w-5 h-5" />
+            </button>
+          )}
+          {!inPortfolio && (
+            <button
+              onClick={() => onBuy(stock)}
+              className="p-2.5 bg-emerald-500/30 hover:bg-emerald-500/40 text-emerald-400 rounded-xl transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StockDiscovery({ 
   portfolioSymbols = [],
   watchlistSymbols = [],
@@ -34,28 +298,28 @@ export default function StockDiscovery({
   onAddToPortfolio,
   compact = false
 }) {
-  const [activeTab, setActiveTab] = useState('sectors');
   const [trendingStocks, setTrendingStocks] = useState([]);
   const [gainers, setGainers] = useState([]);
-  const [mostActive, setMostActive] = useState([]);
-  const [recommendations, setRecommendations] = useState([]);
   const [sectorStocks, setSectorStocks] = useState([]);
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
   const [growthStocks, setGrowthStocks] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [selectedStock, setSelectedStock] = useState(null);
 
   useEffect(() => {
     loadDiscoveryData();
+    // Auto-refresh every 5 minutes
+    const interval = setInterval(loadDiscoveryData, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
-  // Load recommendations based on portfolio
   useEffect(() => {
-    if (portfolioSymbols.length > 0 && activeTab === 'foryou') {
+    if (portfolioSymbols.length > 0) {
       loadRecommendations();
     }
-  }, [portfolioSymbols, activeTab]);
+  }, [portfolioSymbols]);
 
   const loadDiscoveryData = async () => {
     setIsLoading(true);
@@ -68,12 +332,11 @@ export default function StockDiscovery({
         fetchGrowthStocks(),
       ]);
       
-      setTrendingStocks(trending);
-      setGainers(movers.gainers);
-      setMostActive(movers.active);
-      setSectorStocks(sectors);
-      setUndervaluedStocks(undervalued);
-      setGrowthStocks(growth);
+      setTrendingStocks(trending || []);
+      setGainers(movers?.gainers || []);
+      setSectorStocks(sectors || []);
+      setUndervaluedStocks(undervalued || []);
+      setGrowthStocks(growth || []);
       setLastRefresh(new Date());
     } catch (err) {
       console.error('Error loading discovery data:', err);
@@ -83,11 +346,9 @@ export default function StockDiscovery({
 
   const loadRecommendations = async () => {
     if (portfolioSymbols.length === 0) return;
-    
     try {
-      // Get recommendations based on top portfolio stock
       const recs = await fetchStockRecommendations(portfolioSymbols[0]);
-      setRecommendations(recs);
+      setRecommendations(recs || []);
     } catch (err) {
       console.error('Error loading recommendations:', err);
     }
@@ -96,419 +357,241 @@ export default function StockDiscovery({
   const isInPortfolio = (symbol) => portfolioSymbols.includes(symbol);
   const isInWatchlist = (symbol) => watchlistSymbols.includes(symbol);
 
-  const tabs = [
-    { id: 'sectors', label: 'By Sector', icon: Layers },
-    { id: 'undervalued', label: 'Discounted', icon: BadgePercent },
-    { id: 'growth', label: 'Growth', icon: Rocket },
-    { id: 'gainers', label: 'Top Gainers', icon: TrendingUp },
-    { id: 'trending', label: 'Trending', icon: Flame },
-    { id: 'foryou', label: 'For You', icon: Target },
-  ];
+  const handleWatch = (stock) => onAddToWatchlist({ symbol: stock.symbol, name: stock.name });
+  const handleBuy = (stock) => onAddToPortfolio({ symbol: stock.symbol, name: stock.name });
+  const handleViewDetails = (stock) => setSelectedStock(stock);
 
-  const getCurrentData = () => {
-    switch (activeTab) {
-      case 'sectors': return sectorStocks;
-      case 'undervalued': return undervaluedStocks;
-      case 'growth': return growthStocks;
-      case 'trending': return trendingStocks;
-      case 'gainers': return gainers;
-      case 'active': return mostActive;
-      case 'foryou': return recommendations;
-      default: return [];
-    }
-  };
+  // Get top picks for featured section
+  const topGainer = gainers[0];
+  const topDiscount = undervaluedStocks[0];
+  const topTrending = trendingStocks[0];
 
-  const formatVolume = (volume) => {
-    if (!volume) return 'N/A';
-    if (volume >= 1e9) return `${(volume / 1e9).toFixed(1)}B`;
-    if (volume >= 1e6) return `${(volume / 1e6).toFixed(1)}M`;
-    if (volume >= 1e3) return `${(volume / 1e3).toFixed(1)}K`;
-    return volume.toString();
-  };
+  if (compact) {
+    // Simplified compact view
+    return (
+      <div className="glass-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-violet-400" />
+            <span className="font-semibold text-pearl">Discover</span>
+          </div>
+          <button
+            onClick={loadDiscoveryData}
+            disabled={isLoading}
+            className="p-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-400 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        
+        <div className="space-y-2">
+          {[...trendingStocks.slice(0, 2), ...undervaluedStocks.slice(0, 2)].map((stock, idx) => {
+            const isUp = (stock?.changePercent || 0) >= 0;
+            if (!stock) return null;
+            return (
+              <div key={stock.symbol} className="flex items-center justify-between p-2 rounded-lg bg-slate-dark/30 hover:bg-slate-dark/50 group">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-pearl text-sm">{stock.symbol}</span>
+                    {stock.discountFromHigh && (
+                      <span className="text-xs text-emerald-400">-{stock.discountFromHigh}%</span>
+                    )}
+                  </div>
+                  <span className={`text-xs ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    ${stock.price?.toFixed(2)} ({isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%)
+                  </span>
+                </div>
+                <button
+                  onClick={() => handleBuy(stock)}
+                  className="p-1.5 rounded bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
-  const formatMarketCap = (cap) => {
-    if (!cap) return 'N/A';
-    if (cap >= 1e12) return `$${(cap / 1e12).toFixed(1)}T`;
-    if (cap >= 1e9) return `$${(cap / 1e9).toFixed(1)}B`;
-    if (cap >= 1e6) return `$${(cap / 1e6).toFixed(1)}M`;
-    return `$${cap}`;
-  };
+        {selectedStock && (
+          <QuickStockView
+            stock={selectedStock}
+            onClose={() => setSelectedStock(null)}
+            onAddToWatchlist={onAddToWatchlist}
+            onAddToPortfolio={onAddToPortfolio}
+            isInWatchlist={isInWatchlist(selectedStock.symbol)}
+            isInPortfolio={isInPortfolio(selectedStock.symbol)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className={`glass-card ${compact ? 'p-4' : 'p-6 mb-8'}`}>
-      <div className="flex items-center justify-between mb-4">
+    <div className="glass-card p-6 mb-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className={`${compact ? 'p-1.5' : 'p-2'} rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/20`}>
-            <Sparkles className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-violet-400`} />
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-violet-500/30 to-cyan-500/20">
+            <Sparkles className="w-6 h-6 text-violet-400" />
           </div>
           <div>
-            <h2 className={`${compact ? 'text-base' : 'text-lg'} font-bold text-pearl`}>Discover Stocks</h2>
-            {!compact && <p className="text-xs text-steel">Find your next investment opportunity</p>}
+            <h2 className="text-xl font-bold text-pearl">Discover Stocks</h2>
+            <p className="text-sm text-steel">Find your next investment opportunity</p>
           </div>
         </div>
-        <button
-          onClick={loadDiscoveryData}
-          disabled={isLoading}
-          className={`${compact ? 'p-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-400' : 'btn-secondary text-sm'} flex items-center gap-2 transition-colors`}
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-          {!compact && 'Refresh'}
-        </button>
+        <div className="flex items-center gap-3">
+          {lastRefresh && (
+            <span className="text-xs text-steel">
+              Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <button
+            onClick={loadDiscoveryData}
+            disabled={isLoading}
+            className="p-2 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-400 transition-colors"
+          >
+            <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div className={`flex gap-2 mb-4 overflow-x-auto ${compact ? 'pb-1' : 'pb-2'}`}>
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                activeTab === tab.id
-                  ? 'bg-gradient-to-r from-violet-500/30 to-cyan-500/30 text-white border border-violet-500/30'
-                  : 'text-steel hover:text-silver hover:bg-slate-light/30'
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Content */}
       {isLoading ? (
-        <div className={`flex items-center justify-center ${compact ? 'py-8' : 'py-12'}`}>
-          <RefreshCw className="w-5 h-5 text-violet-400 animate-spin" />
-          <span className="ml-2 text-silver text-sm">Loading...</span>
+        <div className="flex items-center justify-center py-16">
+          <RefreshCw className="w-8 h-8 text-violet-400 animate-spin" />
+          <span className="ml-3 text-silver">Discovering opportunities...</span>
         </div>
       ) : (
         <>
-          {activeTab === 'foryou' && portfolioSymbols.length === 0 ? (
-            <div className="text-center py-12 text-steel">
-              <Target className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p>Add stocks to your portfolio to get personalized recommendations</p>
-            </div>
-          ) : activeTab === 'sectors' ? (
-            /* Sectors Grid - Special Layout */
-            <div className={`grid ${compact ? 'grid-cols-1 max-h-[350px] overflow-y-auto' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'} gap-3`}>
-              {sectorStocks.map((stock, idx) => {
-                const isUp = (stock.changePercent || 0) >= 0;
-                const inPortfolio = isInPortfolio(stock.symbol);
-                const inWatchlist = isInWatchlist(stock.symbol);
-                
-                return (
-                  <div
-                    key={stock.sector}
-                    className="bg-gradient-to-br from-slate-dark/80 to-slate-dark/40 rounded-xl p-4 border border-slate-light/20 hover:border-violet-500/30 transition-all"
-                  >
-                    {/* Sector Header */}
-                    <div className="flex items-center gap-2 mb-3">
-                      <Layers className="w-4 h-4 text-violet-400" />
-                      <span className="text-sm font-semibold text-violet-300">{stock.sector}</span>
-                    </div>
-                    
-                    {/* Top Stock */}
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-pearl text-lg">{stock.symbol}</span>
-                          <span className="text-xs px-1.5 py-0.5 bg-violet-500/20 text-violet-300 rounded">
-                            #1
-                          </span>
-                        </div>
-                        <p className="text-xs text-steel truncate max-w-[160px]">{stock.name}</p>
-                      </div>
-                      {inPortfolio && (
-                        <div className="px-2 py-0.5 bg-emerald-500/20 rounded text-xs text-emerald-400">
-                          Owned
-                        </div>
-                      )}
-                    </div>
+          {/* Featured Picks */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+            <FeaturedStock
+              stock={topGainer}
+              label="Top Gainer Today"
+              color="gold"
+              onWatch={handleWatch}
+              onBuy={handleBuy}
+              onViewDetails={handleViewDetails}
+              isInPortfolio={isInPortfolio}
+              isInWatchlist={isInWatchlist}
+            />
+            <FeaturedStock
+              stock={topDiscount}
+              label="Best Discount"
+              color="emerald"
+              onWatch={handleWatch}
+              onBuy={handleBuy}
+              onViewDetails={handleViewDetails}
+              isInPortfolio={isInPortfolio}
+              isInWatchlist={isInWatchlist}
+            />
+            <FeaturedStock
+              stock={topTrending}
+              label="Trending Now"
+              color="violet"
+              onWatch={handleWatch}
+              onBuy={handleBuy}
+              onViewDetails={handleViewDetails}
+              isInPortfolio={isInPortfolio}
+              isInWatchlist={isInWatchlist}
+            />
+          </div>
 
-                    {/* Price */}
-                    <div className="mb-3">
-                      <div className="text-xl font-bold text-pearl font-mono">
-                        ${stock.price?.toFixed(2) || '—'}
-                      </div>
-                      <div className={`text-sm flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                        {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {isUp ? '+' : ''}{stock.changePercent?.toFixed(2) || 0}% today
-                      </div>
-                    </div>
+          {/* Carousels */}
+          <StockCarousel
+            title="Discounted Stocks"
+            icon={BadgePercent}
+            stocks={undervaluedStocks.slice(1)}
+            color="emerald"
+            onWatch={handleWatch}
+            onBuy={handleBuy}
+            onViewDetails={handleViewDetails}
+            isInPortfolio={isInPortfolio}
+            isInWatchlist={isInWatchlist}
+          />
 
-                    {/* Other sector stocks */}
-                    <div className="mb-3 pt-2 border-t border-slate-light/10">
-                      <p className="text-xs text-steel mb-1">Also in {stock.sector}:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {stock.allSymbols?.slice(1).map(s => (
-                          <span key={s} className="text-xs px-2 py-0.5 bg-slate-light/10 rounded text-silver">
-                            {s}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+          <StockCarousel
+            title="Top Gainers"
+            icon={TrendingUp}
+            stocks={gainers.slice(1)}
+            color="amber"
+            onWatch={handleWatch}
+            onBuy={handleBuy}
+            onViewDetails={handleViewDetails}
+            isInPortfolio={isInPortfolio}
+            isInWatchlist={isInWatchlist}
+          />
 
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setSelectedStock(stock)}
-                        className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                      >
-                        <FileText className="w-3 h-3" />
-                      </button>
-                      {!inPortfolio && !inWatchlist && (
-                        <button
-                          onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
-                          className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          <Eye className="w-3 h-3" />
-                          Watch
-                        </button>
-                      )}
-                      {!inPortfolio && (
-                        <button
-                          onClick={() => onAddToPortfolio({ symbol: stock.symbol, name: stock.name })}
-                          className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Buy
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : activeTab === 'undervalued' ? (
-            /* Undervalued Stocks - Special Layout */
-            <div className={`grid ${compact ? 'grid-cols-1 max-h-[350px] overflow-y-auto' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'} gap-3`}>
-              {undervaluedStocks.map((stock, idx) => {
-                const isUp = (stock.changePercent || 0) >= 0;
-                const inPortfolio = isInPortfolio(stock.symbol);
-                const inWatchlist = isInWatchlist(stock.symbol);
-                
-                return (
-                  <div
-                    key={stock.symbol}
-                    className="bg-gradient-to-br from-emerald-900/20 to-slate-dark/40 rounded-xl p-4 border border-emerald-500/20 hover:border-emerald-500/40 transition-all"
-                  >
-                    {/* Discount Badge */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <BadgePercent className="w-4 h-4 text-emerald-400" />
-                        <span className="text-sm font-semibold text-emerald-300">
-                          {stock.discountFromHigh}% off high
-                        </span>
-                      </div>
-                      {inPortfolio && (
-                        <div className="px-2 py-0.5 bg-emerald-500/20 rounded text-xs text-emerald-400">
-                          Owned
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Stock Info */}
-                    <div className="mb-2">
-                      <span className="font-bold text-pearl text-lg">{stock.symbol}</span>
-                      <p className="text-xs text-steel truncate">{stock.name}</p>
-                    </div>
+          <StockCarousel
+            title="Growth Stocks"
+            icon={Rocket}
+            stocks={growthStocks}
+            color="cyan"
+            onWatch={handleWatch}
+            onBuy={handleBuy}
+            onViewDetails={handleViewDetails}
+            isInPortfolio={isInPortfolio}
+            isInWatchlist={isInWatchlist}
+          />
 
-                    {/* Price */}
-                    <div className="mb-3">
-                      <div className="text-xl font-bold text-pearl font-mono">
-                        ${stock.price?.toFixed(2) || '—'}
-                      </div>
-                      <div className={`text-sm flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                        {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {isUp ? '+' : ''}{stock.changePercent?.toFixed(2) || 0}% today
-                      </div>
-                    </div>
+          <StockCarousel
+            title="Trending"
+            icon={Flame}
+            stocks={trendingStocks.slice(1)}
+            color="rose"
+            onWatch={handleWatch}
+            onBuy={handleBuy}
+            onViewDetails={handleViewDetails}
+            isInPortfolio={isInPortfolio}
+            isInWatchlist={isInWatchlist}
+          />
 
-                    {/* 52-Week Range */}
-                    <div className="mb-3 p-2 bg-slate-dark/50 rounded-lg">
-                      <div className="flex justify-between text-xs mb-1">
-                        <span className="text-steel">52W Low</span>
-                        <span className="text-steel">52W High</span>
-                      </div>
-                      <div className="flex justify-between text-sm font-mono">
-                        <span className="text-emerald-400">${stock.fiftyTwoWeekLow?.toFixed(2)}</span>
-                        <span className="text-rose-400">${stock.fiftyTwoWeekHigh?.toFixed(2)}</span>
-                      </div>
-                      {/* Price position indicator */}
-                      <div className="mt-2 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 rounded-full"
-                          style={{ 
-                            width: `${((stock.price - stock.fiftyTwoWeekLow) / (stock.fiftyTwoWeekHigh - stock.fiftyTwoWeekLow) * 100)}%` 
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* P/E Ratio */}
-                    {stock.peRatio && (
-                      <div className="mb-3 text-xs">
-                        <span className="text-steel">P/E Ratio: </span>
-                        <span className="text-silver font-medium">{stock.peRatio?.toFixed(1)}</span>
-                      </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setSelectedStock(stock)}
-                        className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        title="View Financials"
-                      >
-                        <FileText className="w-3 h-3" />
-                      </button>
-                      {!inPortfolio && !inWatchlist && (
-                        <button
-                          onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
-                          className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          <Eye className="w-3 h-3" />
-                          Watch
-                        </button>
-                      )}
-                      {!inPortfolio && (
-                        <button
-                          onClick={() => onAddToPortfolio({ symbol: stock.symbol, name: stock.name })}
-                          className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Buy
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            /* Default Grid for other tabs */
-            <div className={`grid ${compact ? 'grid-cols-1 max-h-[350px] overflow-y-auto' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'} gap-3`}>
-              {getCurrentData().slice(0, compact ? 6 : 20).map((stock, idx) => {
-                const isUp = (stock.changePercent || 0) >= 0;
-                const inPortfolio = isInPortfolio(stock.symbol);
-                const inWatchlist = isInWatchlist(stock.symbol);
-                
-                return (
-                  <div
-                    key={stock.symbol || idx}
-                    className={`bg-slate-dark/50 rounded-xl ${compact ? 'p-3' : 'p-4'} border border-slate-light/20 hover:border-violet-500/30 transition-all group`}
-                  >
-                    {/* Header */}
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-pearl">{stock.symbol}</span>
-                          {activeTab === 'trending' && (
-                            <span className="text-xs px-1.5 py-0.5 bg-orange-500/20 text-orange-400 rounded">
-                              #{idx + 1}
-                            </span>
-                          )}
-                          {activeTab === 'gainers' && (
-                            <TrendingUp className="w-3 h-3 text-emerald-400" />
-                          )}
-                          {activeTab === 'growth' && (
-                            <Rocket className="w-3 h-3 text-cyan-400" />
-                          )}
-                          {stock.score && (
-                            <span className="text-xs px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
-                              {Math.round(stock.score * 100)}% match
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-steel truncate max-w-[140px]">{stock.name}</p>
-                      </div>
-                      
-                      {inPortfolio && (
-                        <div className="px-2 py-0.5 bg-emerald-500/20 rounded text-xs text-emerald-400">
-                          Owned
-                        </div>
-                      )}
-                      {inWatchlist && !inPortfolio && (
-                        <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                      )}
-                    </div>
-
-                    {/* Price */}
-                    <div className="mb-3">
-                      <div className="text-xl font-bold text-pearl font-mono">
-                        ${stock.price?.toFixed(2) || '—'}
-                      </div>
-                      <div className={`text-sm flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                        {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-                        {isUp ? '+' : ''}{stock.changePercent?.toFixed(2) || 0}%
-                        <span className="text-steel ml-1">
-                          ({isUp ? '+' : ''}${stock.change?.toFixed(2) || 0})
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Stats */}
-                    <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-                      <div className="bg-slate-light/10 rounded-lg px-2 py-1.5">
-                        <span className="text-steel">Vol: </span>
-                        <span className="text-silver font-medium">{formatVolume(stock.volume)}</span>
-                      </div>
-                      <div className="bg-slate-light/10 rounded-lg px-2 py-1.5">
-                        <span className="text-steel">Cap: </span>
-                        <span className="text-silver font-medium">{formatMarketCap(stock.marketCap)}</span>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setSelectedStock(stock)}
-                        className="py-2 px-3 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        title="View Financials"
-                      >
-                        <FileText className="w-3 h-3" />
-                      </button>
-                      {!inPortfolio && !inWatchlist && (
-                        <button
-                          onClick={() => onAddToWatchlist({ symbol: stock.symbol, name: stock.name })}
-                          className="flex-1 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          <Eye className="w-3 h-3" />
-                          Watch
-                        </button>
-                      )}
-                      {!inPortfolio && (
-                        <button
-                          onClick={() => onAddToPortfolio({ symbol: stock.symbol, name: stock.name })}
-                          className="flex-1 py-2 bg-emerald-glow/20 hover:bg-emerald-glow/30 text-emerald-bright rounded-lg text-xs font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          <Plus className="w-3 h-3" />
-                          Buy
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+          {recommendations.length > 0 && (
+            <StockCarousel
+              title="Recommended For You"
+              icon={Target}
+              stocks={recommendations}
+              color="violet"
+              onWatch={handleWatch}
+              onBuy={handleBuy}
+              onViewDetails={handleViewDetails}
+              isInPortfolio={isInPortfolio}
+              isInWatchlist={isInWatchlist}
+            />
           )}
 
-          {getCurrentData().length === 0 && activeTab !== 'foryou' && (
-            <div className="text-center py-12 text-steel">
-              <BarChart3 className="w-10 h-10 mx-auto mb-3 opacity-50" />
-              <p>No data available. Try refreshing.</p>
+          {/* Sector Leaders */}
+          {sectorStocks.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-slate-light/20">
+              <div className="flex items-center gap-2 mb-4">
+                <Layers className="w-5 h-5 text-violet-400" />
+                <h3 className="font-semibold text-pearl">Sector Leaders</h3>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {sectorStocks.slice(0, 6).map((stock) => {
+                  const isUp = (stock.changePercent || 0) >= 0;
+                  const inPortfolio = isInPortfolio(stock.symbol);
+                  
+                  return (
+                    <div
+                      key={stock.sector}
+                      onClick={() => handleViewDetails(stock)}
+                      className="p-3 rounded-xl bg-slate-dark/50 border border-slate-light/20 hover:border-violet-500/40 cursor-pointer transition-all group"
+                    >
+                      <p className="text-xs text-violet-400 mb-1 truncate">{stock.sector}</p>
+                      <p className="font-bold text-pearl">{stock.symbol}</p>
+                      <p className={`text-sm font-mono ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                        {isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%
+                      </p>
+                      {inPortfolio && (
+                        <span className="text-xs text-emerald-400">Owned</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </>
-      )}
-
-      {/* Last Updated */}
-      {lastRefresh && !compact && (
-        <div className="mt-4 text-xs text-steel text-center">
-          Last updated: {lastRefresh.toLocaleTimeString()}
-        </div>
       )}
 
       {/* Quick Stock View Modal */}
@@ -525,4 +608,3 @@ export default function StockDiscovery({
     </div>
   );
 }
-
