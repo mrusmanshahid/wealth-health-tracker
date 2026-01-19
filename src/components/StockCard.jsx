@@ -1,8 +1,9 @@
-import { TrendingUp, TrendingDown, Trash2, FileText, Edit3, PiggyBank, PieChart } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, FileText, Edit3, PiggyBank, PieChart, Newspaper, ExternalLink } from 'lucide-react';
 import ContributionGrowthChart from './ContributionGrowthChart';
 import { formatCurrency } from '../services/currencyApi';
+import { formatDistanceToNow } from 'date-fns';
 
-export default function StockCard({ stock, totalPortfolioValue, onRemove, onViewChart, onEdit }) {
+export default function StockCard({ stock, totalPortfolioValue, onRemove, onViewChart, onEdit, latestNews }) {
   const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
   const currentPrice = stock.currentPrice || stock.purchasePrice;
   const currentValue = shares * currentPrice;
@@ -182,6 +183,36 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
           </div>
         </div>
       </div>
+
+      {/* Latest News */}
+      {latestNews && (
+        <div className="mt-4 pt-4 border-t border-slate-light/20">
+          <a 
+            href={latestNews.link} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block group/news hover:bg-slate-light/10 rounded-lg p-2 -mx-2 transition-colors"
+          >
+            <div className="flex items-start gap-2">
+              <Newspaper className="w-4 h-4 text-cyan-400 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-silver line-clamp-2 group-hover/news:text-pearl transition-colors">
+                  {latestNews.title}
+                </p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] text-steel">{latestNews.publisher}</span>
+                  {latestNews.publishedAt && (
+                    <span className="text-[10px] text-steel">
+                      • {formatDistanceToNow(latestNews.publishedAt, { addSuffix: true })}
+                    </span>
+                  )}
+                  <ExternalLink className="w-3 h-3 text-steel opacity-0 group-hover/news:opacity-100 transition-opacity ml-auto" />
+                </div>
+              </div>
+            </div>
+          </a>
+        </div>
+      )}
 
       {/* Monthly Contribution Growth Chart - Shows on Hover */}
       {stock.monthlyContribution > 0 && (

@@ -1,12 +1,34 @@
-import { useState } from 'react';
-import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText, Receipt } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText, Receipt, Newspaper, ExternalLink, RefreshCw } from 'lucide-react';
 import UnifiedStockChart from './UnifiedStockChart';
 import EarningsReport from './EarningsReport';
 import TransactionHistory from './TransactionHistory';
 import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
+import { fetchSingleStockNews } from '../services/stockApi';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function StockDetailModal({ stock, onClose, onAddTransaction, onDeleteTransaction }) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [news, setNews] = useState([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+
+  // Fetch news when modal opens
+  useEffect(() => {
+    if (stock?.symbol) {
+      loadNews();
+    }
+  }, [stock?.symbol]);
+
+  const loadNews = async () => {
+    setNewsLoading(true);
+    try {
+      const newsData = await fetchSingleStockNews(stock.symbol, 5);
+      setNews(newsData);
+    } catch (err) {
+      console.error('Failed to load news:', err);
+    }
+    setNewsLoading(false);
+  };
   
   if (!stock) return null;
 
@@ -213,7 +235,7 @@ export default function StockDetailModal({ stock, onClose, onAddTransaction, onD
             </div>
 
             {/* Purchase Info */}
-            <div className="pt-4 border-t border-slate-light/30 flex flex-wrap items-center gap-4 text-sm text-steel">
+            <div className="pt-4 border-t border-slate-light/30 flex flex-wrap items-center gap-4 text-sm text-steel mb-6">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 Purchased: {stock.purchaseDate || 'Not specified'}
@@ -225,6 +247,69 @@ export default function StockDetailModal({ stock, onClose, onAddTransaction, onD
                 <div className="flex items-center gap-2">
                   <PiggyBank className="w-4 h-4" />
                   ${stock.monthlyContribution}/mo contribution
+                </div>
+              )}
+            </div>
+
+            {/* Related News */}
+            <div className="glass-card p-4 bg-slate-dark/30">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Newspaper className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-sm font-semibold text-silver uppercase tracking-wide">Latest News</h3>
+                </div>
+                <button
+                  onClick={loadNews}
+                  disabled={newsLoading}
+                  className="p-1.5 rounded-lg hover:bg-slate-light/30 transition-colors text-steel hover:text-cyan-400"
+                >
+                  <RefreshCw className={`w-4 h-4 ${newsLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+              
+              {newsLoading ? (
+                <div className="flex items-center justify-center py-6">
+                  <RefreshCw className="w-5 h-5 text-cyan-400 animate-spin" />
+                  <span className="ml-2 text-steel text-sm">Loading news...</span>
+                </div>
+              ) : news.length > 0 ? (
+                <div className="space-y-3">
+                  {news.map((article, idx) => (
+                    <a
+                      key={idx}
+                      href={article.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-light/20 transition-colors group"
+                    >
+                      {article.thumbnail && (
+                        <img 
+                          src={article.thumbnail} 
+                          alt=""
+                          className="w-16 h-12 object-cover rounded flex-shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-silver line-clamp-2 group-hover:text-pearl transition-colors">
+                          {article.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-steel">{article.publisher}</span>
+                          {article.publishedAt && (
+                            <span className="text-xs text-steel">
+                              • {formatDistanceToNow(article.publishedAt, { addSuffix: true })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-steel opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <Newspaper className="w-8 h-8 text-steel/50 mx-auto mb-2" />
+                  <p className="text-steel text-sm">No recent news available</p>
                 </div>
               )}
             </div>

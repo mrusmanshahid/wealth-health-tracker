@@ -699,3 +699,27 @@ export async function fetchStockNews(symbols) {
   }
 }
 
+// Fetch news for a single stock
+export async function fetchSingleStockNews(symbol, count = 5) {
+  try {
+    const url = `${CORS_PROXY}${encodeURIComponent(
+      `https://query1.finance.yahoo.com/v1/finance/search?q=${symbol}&quotesCount=0&newsCount=${count}`
+    )}`;
+    
+    const response = await fetch(url);
+    const data = await response.json();
+    
+    return (data.news || []).map(article => ({
+      title: article.title,
+      link: article.link,
+      publisher: article.publisher,
+      publishedAt: article.providerPublishTime ? new Date(article.providerPublishTime * 1000) : null,
+      thumbnail: article.thumbnail?.resolutions?.[0]?.url || null,
+      relatedSymbol: symbol,
+    }));
+  } catch (err) {
+    console.error(`News fetch error for ${symbol}:`, err);
+    return [];
+  }
+}
+

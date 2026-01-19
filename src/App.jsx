@@ -15,7 +15,7 @@ import Watchlist from './components/Watchlist';
 import StockDiscovery from './components/StockDiscovery';
 import InvestableCash from './components/InvestableCash';
 
-import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks } from './services/stockApi';
+import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks, fetchSingleStockNews } from './services/stockApi';
 import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist, saveCashData, loadCashData } from './services/storage';
 import { generateForecast, calculateWealthGrowth, calculatePortfolioMetrics } from './utils/forecasting';
 import { generateDemoPortfolio } from './utils/demoData';
@@ -47,6 +47,7 @@ function App() {
   const [cashTransactions, setCashTransactions] = useState([]);
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
+  const [stockNews, setStockNews] = useState({}); // { symbol: latestNewsItem }
 
   // Load saved data on mount
   useEffect(() => {
@@ -191,6 +192,30 @@ function App() {
       });
     }
   }, [stocks, settings]);
+
+  // Fetch news for all portfolio stocks
+  useEffect(() => {
+    const fetchAllStockNews = async () => {
+      if (stocks.length === 0) return;
+      
+      const newsMap = {};
+      await Promise.all(
+        stocks.map(async (stock) => {
+          try {
+            const newsItems = await fetchSingleStockNews(stock.symbol, 1);
+            if (newsItems.length > 0) {
+              newsMap[stock.symbol] = newsItems[0];
+            }
+          } catch (err) {
+            console.error(`Failed to fetch news for ${stock.symbol}:`, err);
+          }
+        })
+      );
+      setStockNews(newsMap);
+    };
+    
+    fetchAllStockNews();
+  }, [stocks.length]); // Only refetch when number of stocks changes
 
   const refreshStockData = async (portfolioStocks) => {
     // Ensure we have fresh exchange rates
@@ -736,6 +761,7 @@ function App() {
                     onRemove={handleRemoveStock}
                     onViewChart={handleViewChart}
                     onEdit={handleEditStock}
+                    latestNews={stockNews[stock.symbol]}
                   />
                 ))}
               </div>
