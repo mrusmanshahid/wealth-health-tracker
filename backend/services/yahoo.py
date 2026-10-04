@@ -588,14 +588,28 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
     analyst = _extract_analyst(ticker, info, price)
     fundamentals = _extract_fundamentals(ticker, info, light=True)
 
+    from backend.services import currency as fx
+
+    currency = fx.normalize_currency(info.get("currency") or "USD")
+    price_usd = fx.to_usd(price, currency)
+    prev_close_usd = fx.to_usd(prev_close, currency)
+    change_usd = fx.to_usd(change, currency) if change else (
+        price_usd - prev_close_usd if prev_close_usd else 0.0
+    )
+
     return {
         "symbol": (info.get("symbol") or symbol).upper(),
         "name": info.get("longName") or info.get("shortName") or symbol,
-        "price": price,
+        "price": price,  # native market currency
+        "priceNative": price,
+        "priceUSD": price_usd,
         "previousClose": prev_close,
+        "previousCloseUSD": prev_close_usd,
         "change": change,
+        "changeUSD": change_usd,
         "changePercent": change_pct,
-        "currency": info.get("currency") or "USD",
+        "currency": currency,
+        "exchangeRate": fx.exchange_rate_to_usd(currency),
         "dayHigh": float(info.get("dayHigh") or info.get("regularMarketDayHigh") or 0),
         "dayLow": float(info.get("dayLow") or info.get("regularMarketDayLow") or 0),
         "fiftyTwoWeekHigh": float(info.get("fiftyTwoWeekHigh") or 0),
@@ -625,11 +639,17 @@ def _enrich_discovery_item(item: dict[str, Any]) -> dict[str, Any]:
         quote = _quote_sync(symbol)
         # Preserve screener-specific fields (discount, returns, category)
         merged = {**quote, **{k: v for k, v in item.items() if v is not None}}
-        # Prefer live quote price/change when present
-        if quote.get("price"):
-            merged["price"] = quote["price"]
+        # Keep native quote + USD fields from live quote
+        if quote.get("price") is not None:
+            merged["priceNative"] = quote.get("priceNative", quote["price"])
+            merged["priceUSD"] = quote.get("priceUSD")
+            merged["price"] = quote.get("priceUSD") or quote["price"]
+            merged["currency"] = quote.get("currency") or "USD"
+            merged["exchangeRate"] = quote.get("exchangeRate")
         if quote.get("changePercent") is not None:
             merged["changePercent"] = quote["changePercent"]
+        if quote.get("changeUSD") is not None:
+            merged["change"] = quote["changeUSD"]
         merged["analyst"] = quote.get("analyst")
         merged["fundamentals"] = quote.get("fundamentals")
         return merged

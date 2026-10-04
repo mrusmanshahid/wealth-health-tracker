@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.services import yahoo
+from backend.services.currency import fetch_exchange_rates
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 
@@ -12,6 +13,7 @@ router = APIRouter(prefix="/api/stocks", tags=["stocks"])
 @router.get("/history/{symbol}")
 async def stock_history(symbol: str, years: int = Query(default=10, ge=1, le=30)):
     try:
+        await fetch_exchange_rates()
         return await yahoo.fetch_stock_history(symbol, years)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -22,6 +24,7 @@ async def stock_history(symbol: str, years: int = Query(default=10, ge=1, le=30)
 @router.get("/quote/{symbol}")
 async def stock_quote(symbol: str):
     try:
+        await fetch_exchange_rates()
         return await yahoo.fetch_stock_quote(symbol)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -21,6 +21,7 @@ import {
   Activity,
   Users,
 } from 'lucide-react';
+import { describeFx, formatUSD } from '../services/currencyApi';
 import { 
   fetchTrendingStocks, 
   fetchMarketMovers, 
@@ -44,6 +45,16 @@ function healthLabel(health) {
   if (health === 'mixed') return 'Mixed';
   if (health === 'weak') return 'Weak';
   return 'N/A';
+}
+
+function discoveryPrice(stock) {
+  const currency = stock.currency || 'USD';
+  const native = stock.priceNative ?? stock.price;
+  const usd =
+    stock.priceUSD != null
+      ? Number(stock.priceUSD)
+      : describeFx(native ?? 0, currency).usd;
+  return { usd, fx: describeFx(native ?? usd, currency) };
 }
 
 function formatInd(ind) {
@@ -238,11 +249,23 @@ function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onVie
                 )}
               </div>
 
-              {/* Price */}
+              {/* Price (USD, with native FX when needed) */}
               <div className="mb-2">
-                <div className="text-lg font-bold text-pearl font-mono">
-                  ${stock.price?.toFixed(2) || '—'}
-                </div>
+                {(() => {
+                  const { usd, fx } = discoveryPrice(stock);
+                  return (
+                    <>
+                      <div className="text-lg font-bold text-pearl font-mono">
+                        {usd != null ? formatUSD(usd) : '—'}
+                      </div>
+                      {fx.isNonUSD && (
+                        <p className="text-[10px] text-amber-bright font-mono">
+                          {fx.nativeLabel} → USD
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
                 <div className={`text-xs flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
                   {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                   {isUp ? '+' : ''}{stock.changePercent?.toFixed(1) || 0}%
@@ -352,7 +375,9 @@ function FeaturedStock({ stock, label, color, onWatch, onBuy, onViewDetails, isI
           
           <div className="flex items-end gap-2 mb-2">
             <div>
-              <p className="text-xl font-bold text-pearl font-mono">${stock.price?.toFixed(2)}</p>
+              <p className="text-xl font-bold text-pearl font-mono">
+                {formatUSD(discoveryPrice(stock).usd)}
+              </p>
               <div className={`flex items-center gap-1 text-xs ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
                 {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                 <span className="font-medium">{isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%</span>
@@ -508,7 +533,7 @@ export default function StockDiscovery({
                     )}
                   </div>
                   <span className={`text-xs ${isUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    ${stock.price?.toFixed(2)} ({isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%)
+                    {formatUSD(discoveryPrice(stock).usd)} ({isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%)
                   </span>
                 </div>
                 <button

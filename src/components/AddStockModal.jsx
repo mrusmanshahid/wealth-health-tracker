@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, PiggyBank, Wallet } from 'lucide-react';
 import { searchStocks, fetchStockQuote } from '../services/stockApi';
+import {
+  convertToUSD,
+  describeFx,
+  fetchExchangeRates,
+  formatCurrency,
+  formatUSD,
+  getExchangeRate,
+} from '../services/currencyApi';
 
 export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, availableCash = 0 }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -8,13 +16,15 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
   const [selectedStock, setSelectedStock] = useState(null);
   const [inputMode, setInputMode] = useState('shares'); // 'shares' or 'amount'
   const [shares, setShares] = useState('');
-  const [avgPrice, setAvgPrice] = useState('');
-  const [investedAmount, setInvestedAmount] = useState('');
+  const [avgPrice, setAvgPrice] = useState(''); // native market currency
+  const [investedAmount, setInvestedAmount] = useState(''); // USD when amount mode
   const [purchaseDate, setPurchaseDate] = useState('');
   const [monthlyContribution, setMonthlyContribution] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
-  const [currentPrice, setCurrentPrice] = useState(0);
+  const [quoteCurrency, setQuoteCurrency] = useState('USD');
+  const [currentPriceNative, setCurrentPriceNative] = useState(0);
+  const [currentPriceUSD, setCurrentPriceUSD] = useState(0);
   const [error, setError] = useState('');
 
   // Handle prefilled stock from watchlist or discovery
@@ -55,28 +65,38 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
     setIsLoadingQuote(true);
     
     try {
+      await fetchExchangeRates();
       const quote = await fetchStockQuote(stock.symbol);
-      setCurrentPrice(quote.price);
-      setAvgPrice(quote.price.toFixed(2));
+      const currency = quote.currency || 'USD';
+      const native = quote.priceNative ?? quote.price ?? 0;
+      const usd = quote.priceUSD ?? convertToUSD(native, currency);
+      setQuoteCurrency(currency);
+      setCurrentPriceNative(native);
+      setCurrentPriceUSD(usd);
+      setAvgPrice(native ? Number(native).toFixed(2) : '');
     } catch (err) {
       console.error('Quote error:', err);
     }
     setIsLoadingQuote(false);
   };
 
-  // Calculate preview values
+  // Calculate preview values in USD
   const sharesNum = parseFloat(shares) || 0;
-  const avgPriceNum = parseFloat(avgPrice) || 0;
-  const investedNum = inputMode === 'shares' 
-    ? sharesNum * avgPriceNum 
-    : parseFloat(investedAmount) || 0;
-  const calculatedShares = inputMode === 'amount' && avgPriceNum > 0 
-    ? investedNum / avgPriceNum 
-    : sharesNum;
-  const currentValue = calculatedShares * currentPrice;
-  const gainLoss = currentValue - investedNum;
-  const gainLossPercent = investedNum > 0 ? (gainLoss / investedNum) * 100 : 0;
+  const avgPriceNative = parseFloat(avgPrice) || 0;
+  const avgPriceUSD = convertToUSD(avgPriceNative, quoteCurrency);
+  const investedUSD =
+    inputMode === 'shares'
+      ? sharesNum * avgPriceUSD
+      : parseFloat(investedAmount) || 0;
+  const calculatedShares =
+    inputMode === 'amount' && avgPriceUSD > 0
+      ? investedUSD / avgPriceUSD
+      : sharesNum;
+  const currentValue = calculatedShares * currentPriceUSD;
+  const gainLoss = currentValue - investedUSD;
+  const gainLossPercent = investedUSD > 0 ? (gainLoss / investedUSD) * 100 : 0;
   const isPositive = gainLoss >= 0;
+  const fx = describeFx(avgPriceNative || currentPriceNative, quoteCurrency);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -87,7 +107,10 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
       return;
     }
 
-    let finalShares, finalInvested, finalAvgPrice;
+    let finalShares;
+    let purchasePriceNative;
+    let purchasePriceUSD;
+    let investedAmountUSD;
 
     if (inputMode === 'shares') {
       if (!shares || parseFloat(shares) <= 0) {
@@ -99,28 +122,39 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
         return;
       }
       finalShares = parseFloat(shares);
-      finalAvgPrice = parseFloat(avgPrice);
-      finalInvested = finalShares * finalAvgPrice;
+      purchasePriceNative = parseFloat(avgPrice);
+      purchasePriceUSD = convertToUSD(purchasePriceNative, quoteCurrency);
+      investedAmountUSD = finalShares * purchasePriceUSD;
     } else {
       if (!investedAmount || parseFloat(investedAmount) <= 0) {
-        setError('Please enter a valid investment amount');
+        setError('Please enter a valid investment amount (USD)');
         return;
       }
       if (!avgPrice || parseFloat(avgPrice) <= 0) {
         setError('Please enter a valid purchase price');
         return;
       }
-      finalInvested = parseFloat(investedAmount);
-      finalAvgPrice = parseFloat(avgPrice);
-      finalShares = finalInvested / finalAvgPrice;
+      investedAmountUSD = parseFloat(investedAmount);
+      purchasePriceNative = parseFloat(avgPrice);
+      purchasePriceUSD = convertToUSD(purchasePriceNative, quoteCurrency);
+      if (purchasePriceUSD <= 0) {
+        setError('Could not convert purchase price to USD');
+        return;
+      }
+      finalShares = investedAmountUSD / purchasePriceUSD;
     }
 
     onAdd({
       symbol: selectedStock.symbol,
       name: selectedStock.name,
       shares: finalShares,
-      investedAmount: finalInvested,
-      purchasePrice: finalAvgPrice,
+      currency: quoteCurrency,
+      exchangeRate: getExchangeRate(quoteCurrency),
+      purchasePrice: purchasePriceNative,
+      purchasePriceOriginal: purchasePriceNative,
+      purchasePriceUSD,
+      investedAmount: investedAmountUSD,
+      investedAmountUSD,
       purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
       monthlyContribution: parseFloat(monthlyContribution) || 0,
       addedAt: new Date().toISOString(),
@@ -139,7 +173,9 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
     setPurchaseDate('');
     setMonthlyContribution('');
     setSearchQuery('');
-    setCurrentPrice(0);
+    setQuoteCurrency('USD');
+    setCurrentPriceNative(0);
+    setCurrentPriceUSD(0);
     setError('');
   };
 
@@ -226,9 +262,18 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
               <div>
                 <span className="font-bold text-emerald-bright">{selectedStock.symbol}</span>
                 <span className="text-silver ml-2 text-sm">{selectedStock.name}</span>
-                {currentPrice > 0 && (
+                {currentPriceNative > 0 && (
                   <p className="text-xs text-steel mt-1">
-                    Current price: <span className="text-pearl font-mono">${currentPrice.toFixed(2)}</span>
+                    Current:{' '}
+                    <span className="text-pearl font-mono">
+                      {formatCurrency(currentPriceNative, quoteCurrency)}
+                    </span>
+                    {quoteCurrency !== 'USD' && (
+                      <span className="text-amber-bright font-mono">
+                        {' '}
+                        → {formatUSD(currentPriceUSD)}
+                      </span>
+                    )}
                   </p>
                 )}
               </div>
@@ -237,12 +282,21 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                 onClick={() => {
                   setSelectedStock(null);
                   setAvgPrice('');
-                  setCurrentPrice(0);
+                  setQuoteCurrency('USD');
+                  setCurrentPriceNative(0);
+                  setCurrentPriceUSD(0);
                 }}
                 className="text-steel hover:text-pearl transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+          )}
+
+          {selectedStock && fx.isNonUSD && (
+            <div className="p-3 rounded-lg bg-amber/10 border border-amber/20 text-xs text-amber-bright">
+              Quoted in {quoteCurrency}. Costs convert to USD for your portfolio.
+              {fx.rateLabel ? ` ${fx.rateLabel}.` : ''}
             </div>
           )}
 
@@ -293,11 +347,11 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                 />
               </div>
 
-              {/* Average Price */}
+              {/* Average Price (market currency) */}
               <div>
                 <label className="block text-sm font-medium text-silver mb-2">
                   <DollarSign className="inline w-4 h-4 mr-1" />
-                  Average Cost per Share ($)
+                  Average cost per share ({quoteCurrency})
                 </label>
                 <input
                   type="number"
@@ -310,17 +364,20 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                   disabled={isLoadingQuote}
                 />
                 <p className="text-xs text-steel mt-1">
-                  Your average purchase price across all buys
+                  Market currency
+                  {avgPriceNative > 0 && quoteCurrency !== 'USD'
+                    ? ` · ≈ ${formatUSD(avgPriceUSD)} USD`
+                    : ''}
                 </p>
               </div>
             </>
           ) : (
             <>
-              {/* Investment Amount */}
+              {/* Investment Amount (USD cash) */}
               <div>
                 <label className="block text-sm font-medium text-silver mb-2">
                   <DollarSign className="inline w-4 h-4 mr-1" />
-                  Total Investment Amount ($)
+                  Total investment amount (USD)
                 </label>
                 <input
                   type="number"
@@ -333,10 +390,10 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                 />
               </div>
 
-              {/* Purchase Price */}
+              {/* Purchase Price (market currency) */}
               <div>
                 <label className="block text-sm font-medium text-silver mb-2">
-                  Purchase Price per Share ($)
+                  Purchase price per share ({quoteCurrency})
                 </label>
                 <input
                   type="number"
@@ -394,39 +451,39 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
 
           {/* Available Cash Display */}
           {availableCash > 0 && selectedStock && (
-            <div className={`p-3 rounded-xl border ${investedNum <= availableCash ? 'border-cyan-500/30 bg-cyan-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+            <div className={`p-3 rounded-xl border ${investedUSD <= availableCash ? 'border-cyan-500/30 bg-cyan-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Wallet className={`w-4 h-4 ${investedNum <= availableCash ? 'text-cyan-400' : 'text-amber-400'}`} />
+                  <Wallet className={`w-4 h-4 ${investedUSD <= availableCash ? 'text-cyan-400' : 'text-amber-400'}`} />
                   <span className="text-sm text-steel">Available Cash:</span>
                   <span className="font-mono font-semibold text-pearl">${availableCash.toLocaleString()}</span>
                 </div>
-                {investedNum > 0 && (
+                {investedUSD > 0 && (
                   <div className="text-right">
                     <span className="text-xs text-steel">After purchase: </span>
-                    <span className={`font-mono font-semibold ${investedNum <= availableCash ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      ${Math.max(0, availableCash - investedNum).toLocaleString()}
+                    <span className={`font-mono font-semibold ${investedUSD <= availableCash ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      ${Math.max(0, availableCash - investedUSD).toLocaleString()}
                     </span>
                   </div>
                 )}
               </div>
-              {investedNum > availableCash && investedNum > 0 && (
+              {investedUSD > availableCash && investedUSD > 0 && (
                 <p className="text-xs text-amber-400 mt-2">
-                  ⚠️ Purchase amount exceeds available cash. You can still proceed, but this won't be deducted from your cash balance.
+                  Purchase amount exceeds available cash. You can still proceed, but this won&apos;t be deducted from your cash balance.
                 </p>
               )}
             </div>
           )}
 
-          {/* Live Preview */}
-          {selectedStock && calculatedShares > 0 && avgPriceNum > 0 && currentPrice > 0 && (
+          {/* Live Preview (USD) */}
+          {selectedStock && calculatedShares > 0 && avgPriceNative > 0 && currentPriceUSD > 0 && (
             <div className="p-4 rounded-xl border border-slate-light/30 bg-gradient-to-br from-slate-dark/50 to-obsidian/50">
-              <h3 className="text-sm font-semibold text-silver mb-3 uppercase tracking-wide">Position Preview</h3>
+              <h3 className="text-sm font-semibold text-silver mb-3 uppercase tracking-wide">Position Preview (USD)</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-steel mb-1">Total Cost</p>
                   <p className="font-mono font-semibold text-pearl">
-                    ${investedNum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    ${investedUSD.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </p>
                 </div>
                 <div>

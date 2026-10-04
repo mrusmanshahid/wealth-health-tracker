@@ -17,6 +17,7 @@ import {
   projectWealth,
   searchStocks,
 } from '../services/stockApi';
+import { convertToUSD, fetchExchangeRates } from '../services/currencyApi';
 import { defaultInvestmentPlans } from '../services/storage';
 
 function formatMoney(n) {
@@ -72,56 +73,79 @@ function HoldingList({ rows }) {
     <div className="rounded-xl border border-slate-light/20 overflow-hidden">
       <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-2 text-[10px] uppercase tracking-wide text-steel bg-slate-dark/60 border-b border-slate-light/10">
         <div className="col-span-4">Buy</div>
-        <div className="col-span-2 text-right">Amount</div>
+        <div className="col-span-2 text-right">Amount (USD)</div>
         <div className="col-span-1 text-right">Mix</div>
         <div className="col-span-3 text-right">Est. income</div>
         <div className="col-span-2 text-right">Brokers</div>
       </div>
       <div className="divide-y divide-slate-light/10">
-        {rows.map((row) => (
-          <div
-            key={`${row.kind}-${row.symbol}-${row.role || row.percent}`}
-            className="grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-2 px-3 py-2.5 bg-slate-dark/40"
-          >
-            <div className="sm:col-span-4 min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-pearl text-sm">{row.symbol}</span>
-                <span className="text-[10px] text-steel uppercase tracking-wide">
-                  {row.kind === 'savings' || row.kind === 'overnight'
-                    ? 'Overnight'
-                    : row.kind}
-                </span>
+        {rows.map((row) => {
+          const currency = row.currency || 'USD';
+          const priceUsd = row.priceUSD ?? row.price;
+          const priceNative = row.priceNative;
+          const showFx = currency !== 'USD' && priceNative > 0;
+          return (
+            <div
+              key={`${row.kind}-${row.symbol}-${row.role || row.percent}`}
+              className="grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-2 px-3 py-2.5 bg-slate-dark/40"
+            >
+              <div className="sm:col-span-4 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-pearl text-sm">{row.symbol}</span>
+                  <span className="text-[10px] text-steel uppercase tracking-wide">
+                    {row.kind === 'savings' || row.kind === 'overnight'
+                      ? 'Overnight'
+                      : row.kind}
+                  </span>
+                  {currency !== 'USD' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber/15 text-amber-bright">
+                      {currency}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-steel truncate">{row.name}</p>
+                {row.role && (
+                  <p className="text-[10px] text-silver truncate">{row.role}</p>
+                )}
               </div>
-              <p className="text-[11px] text-steel truncate">{row.name}</p>
-              {row.role && (
-                <p className="text-[10px] text-silver truncate">{row.role}</p>
-              )}
-            </div>
-            <div className="sm:col-span-2 sm:text-right">
-              <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
-              {row.price > 0 && (
-                <p className="text-[10px] text-steel">
-                  ${Number(row.price).toFixed(2)}
-                  {row.shares != null ? ` · ~${Number(row.shares).toFixed(2)} sh` : ''}
+              <div className="sm:col-span-2 sm:text-right">
+                <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
+                {priceUsd > 0 && (
+                  <p className="text-[10px] text-steel">
+                    {showFx ? (
+                      <>
+                        {Number(priceNative).toFixed(2)} {currency}
+                        {' → '}${Number(priceUsd).toFixed(2)}
+                      </>
+                    ) : (
+                      <>${Number(priceUsd).toFixed(2)}</>
+                    )}
+                    {row.shares != null ? ` · ~${Number(row.shares).toFixed(2)} sh` : ''}
+                  </p>
+                )}
+                {showFx && row.exchangeRate > 0 && (
+                  <p className="text-[10px] text-amber-bright">
+                    1 {currency} = ${Number(row.exchangeRate).toFixed(4)}
+                  </p>
+                )}
+              </div>
+              <div className="sm:col-span-1 sm:text-right font-mono text-sm text-silver">
+                {row.percent}%
+              </div>
+              <div className="sm:col-span-3 sm:text-right">
+                <p className="font-mono text-sm text-emerald-bright">
+                  {formatMoney(row.expectedAnnualIncome || 0)}
                 </p>
-              )}
+                <p className="text-[10px] text-steel">{incomeLabel(row)}</p>
+              </div>
+              <div className="sm:col-span-2 sm:text-right text-[10px] text-silver">
+                {row.access?.brokers?.length > 0
+                  ? row.access.brokers.map((b) => b.name).join(', ')
+                  : '—'}
+              </div>
             </div>
-            <div className="sm:col-span-1 sm:text-right font-mono text-sm text-silver">
-              {row.percent}%
-            </div>
-            <div className="sm:col-span-3 sm:text-right">
-              <p className="font-mono text-sm text-emerald-bright">
-                {formatMoney(row.expectedAnnualIncome || 0)}
-              </p>
-              <p className="text-[10px] text-steel">{incomeLabel(row)}</p>
-            </div>
-            <div className="sm:col-span-2 sm:text-right text-[10px] text-silver">
-              {row.access?.brokers?.length > 0
-                ? row.access.brokers.map((b) => b.name).join(', ')
-                : '—'}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -261,15 +285,21 @@ export default function WealthProjector({
     setError(null);
     try {
       const fundedAt = new Date().toISOString();
-      const holdings = (suggestedResult.allocationPlan || []).map((row) => ({
-        symbol: row.symbol,
-        name: row.name,
-        kind: row.kind === 'savings' ? 'overnight' : row.kind,
-        weightPercent: row.percent,
-        amount: row.amount,
-        shares: row.shares || (row.price > 0 ? row.amount / row.price : 0),
-        purchasePrice: row.price || 0,
-      }));
+      const holdings = (suggestedResult.allocationPlan || []).map((row) => {
+        const priceUsd = row.priceUSD ?? row.price ?? 0;
+        return {
+          symbol: row.symbol,
+          name: row.name,
+          kind: row.kind === 'savings' ? 'overnight' : row.kind,
+          weightPercent: row.percent,
+          amount: row.amount,
+          currency: row.currency || 'USD',
+          exchangeRate: row.exchangeRate || 1,
+          priceNative: row.priceNative,
+          shares: row.shares || (priceUsd > 0 ? row.amount / priceUsd : 0),
+          purchasePrice: priceUsd,
+        };
+      });
       const snapshot = {
         id: uid('fund'),
         source: 'suggested',
@@ -341,11 +371,18 @@ export default function WealthProjector({
           continue;
         }
         const symbol = s.symbol.trim().toUpperCase();
-        let price = 0;
+        let priceUsd = 0;
+        let priceNative = 0;
+        let currency = 'USD';
+        let exchangeRate = 1;
         let name = s.name || symbol;
         try {
+          await fetchExchangeRates();
           const q = await fetchStockQuote(symbol);
-          price = q?.price || 0;
+          currency = q?.currency || 'USD';
+          priceNative = q?.priceNative ?? q?.price ?? 0;
+          priceUsd = q?.priceUSD ?? convertToUSD(priceNative, currency);
+          exchangeRate = q?.exchangeRate || 1;
           name = q?.name || name;
         } catch {
           // keep symbol even if quote fails
@@ -356,8 +393,11 @@ export default function WealthProjector({
           kind: 'ticker',
           weightPercent: s.percent,
           amount,
-          shares: price > 0 ? amount / price : 0,
-          purchasePrice: price,
+          currency,
+          exchangeRate,
+          priceNative,
+          shares: priceUsd > 0 ? amount / priceUsd : 0,
+          purchasePrice: priceUsd,
         });
       }
 
@@ -414,11 +454,24 @@ export default function WealthProjector({
               continue;
             }
             try {
+              await fetchExchangeRates();
               const q = await fetchStockQuote(h.symbol);
-              const price = q?.price || h.purchasePrice || 0;
+              const currency = q?.currency || h.currency || 'USD';
+              const native = q?.priceNative ?? q?.price ?? 0;
+              const price =
+                q?.priceUSD ??
+                convertToUSD(native, currency) ??
+                h.purchasePrice ??
+                0;
               const value = (h.shares || 0) * price;
               currentValue += value;
-              holdingValues.push({ ...h, currentPrice: price, currentValue: value });
+              holdingValues.push({
+                ...h,
+                currency,
+                currentPriceNative: native,
+                currentPrice: price,
+                currentValue: value,
+              });
             } catch {
               const v = h.amount || 0;
               currentValue += v;

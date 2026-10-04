@@ -22,6 +22,8 @@ FALLBACK_RATES: dict[str, float] = {
     "NOK": 0.091,
     "DKK": 0.145,
     "KRW": 0.00075,
+    "PKR": 0.0036,
+    "AED": 0.272,
     "USD": 1.0,
 }
 
@@ -29,6 +31,58 @@ CACHE_DURATION_MS = 60 * 60 * 1000
 
 _cached_rates: dict[str, float] = dict(FALLBACK_RATES)
 _last_fetch_time: float = 0
+
+
+def normalize_currency(code: str | None) -> str:
+    """Normalize Yahoo quirks (GBp/GBX = pence)."""
+    if not code:
+        return "USD"
+    c = str(code).strip()
+    if c in ("GBp", "GBX", "gbp", "gbx"):
+        return "GBp"
+    return c.upper()
+
+
+def get_rates_sync() -> dict[str, float]:
+    """Return last known rates (fallback-safe) for sync code paths."""
+    return dict(_cached_rates) if _cached_rates else dict(FALLBACK_RATES)
+
+
+def to_usd(amount: float | None, currency: str | None) -> float:
+    """Convert an amount in `currency` to USD."""
+    if amount is None:
+        return 0.0
+    try:
+        value = float(amount)
+    except (TypeError, ValueError):
+        return 0.0
+
+    code = normalize_currency(currency)
+    if code == "USD":
+        return value
+
+    # Yahoo London sometimes quotes in pence
+    if code == "GBp":
+        value = value / 100.0
+        code = "GBP"
+
+    rates = get_rates_sync()
+    rate = rates.get(code) or FALLBACK_RATES.get(code)
+    if not rate:
+        return value
+    return value * float(rate)
+
+
+def exchange_rate_to_usd(currency: str | None) -> float:
+    code = normalize_currency(currency)
+    if code == "USD":
+        return 1.0
+    if code == "GBp":
+        # 1 pence → USD
+        gbp = get_rates_sync().get("GBP") or FALLBACK_RATES["GBP"]
+        return float(gbp) / 100.0
+    rates = get_rates_sync()
+    return float(rates.get(code) or FALLBACK_RATES.get(code) or 1.0)
 
 
 async def fetch_exchange_rates() -> dict[str, float]:
@@ -51,6 +105,9 @@ async def fetch_exchange_rates() -> dict[str, float]:
                     for currency, rate in rates.items():
                         if rate:
                             converted[currency] = 1 / rate
+                    # Keep pence helper for Yahoo GBp quotes
+                    if "GBP" in converted:
+                        converted["GBp"] = converted["GBP"] / 100.0
                     _cached_rates = converted
                     _last_fetch_time = now
     except Exception:

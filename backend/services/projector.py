@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.services import currency as fx
 from backend.services import markets
 from backend.services.yahoo import _history_sync, _quote_sync, _run
 
@@ -626,13 +627,19 @@ def _project_sync(
                 kind[:-1] if kind.endswith("s") else kind
             )
 
-            price = 0.0
+            price_native = 0.0
+            price_usd = 0.0
+            quote_currency = "USD"
+            exchange_rate = 1.0
             name = local.get("name") or symbol
             if _looks_like_ticker(symbol):
                 try:
                     quote = _quote_sync(symbol)
                     name = quote.get("name") or name
-                    price = float(quote.get("price") or 0)
+                    price_native = float(quote.get("price") or 0)
+                    quote_currency = fx.normalize_currency(quote.get("currency") or "USD")
+                    exchange_rate = fx.exchange_rate_to_usd(quote_currency)
+                    price_usd = fx.to_usd(price_native, quote_currency)
                 except Exception:
                     pass
                 if _is_accumulating(symbol, name):
@@ -651,6 +658,8 @@ def _project_sync(
             else:
                 dividend_income += income
 
+            # Capital/amount are USD — shares from USD price
+            shares = round(amount / price_usd, 4) if price_usd else None
             allocation_plan.append(
                 {
                     "kind": kind_row,
@@ -659,8 +668,12 @@ def _project_sync(
                     "role": h["role"],
                     "amount": round(amount, 2),
                     "percent": round((amount / capital) * 100, 1),
-                    "price": price or None,
-                    "shares": round(amount / price, 4) if price else None,
+                    "currency": quote_currency,
+                    "exchangeRate": round(exchange_rate, 6),
+                    "priceNative": price_native or None,
+                    "price": price_usd or None,  # USD
+                    "priceUSD": price_usd or None,
+                    "shares": shares,
                     "expectedYieldPercent": round(yld * 100, 2),
                     "expectedAnnualIncome": round(income, 2),
                     "incomeType": income_type,
@@ -880,4 +893,6 @@ async def get_countries() -> list[dict[str, Any]]:
 async def project_wealth(
     capital: float, profile_id: str, country_code: str = "US"
 ) -> dict[str, Any]:
+    # Refresh FX cache so local-market quotes convert to USD correctly
+    await fx.fetch_exchange_rates()
     return await _run(_project_sync, capital, profile_id, country_code)

@@ -416,11 +416,17 @@ function App() {
         12
       );
       
-      // Convert user's purchase price to USD if needed
-      const purchasePriceUSD = newStock.currency === currency 
-        ? convertToUSD(newStock.purchasePrice, currency)
-        : newStock.purchasePrice; // Assume user entered in USD if currency doesn't match
-      
+      // Purchase inputs are in the stock's market currency unless already converted
+      const purchaseCurrency = newStock.currency || currency;
+      const purchasePriceUSD =
+        newStock.purchasePriceUSD != null
+          ? Number(newStock.purchasePriceUSD)
+          : convertToUSD(newStock.purchasePrice, purchaseCurrency);
+      const investedAmountUSD =
+        newStock.investedAmountUSD != null
+          ? Number(newStock.investedAmountUSD)
+          : (Number(newStock.shares) || 0) * purchasePriceUSD;
+
       const stockWithData = {
         ...newStock,
         name: data.name || newStock.name,
@@ -429,8 +435,10 @@ function App() {
         quoteType: data.quoteType,
         currentPriceOriginal: data.currentPrice,
         currentPrice: currentPriceUSD,
-        purchasePriceOriginal: newStock.purchasePrice,
+        purchasePriceOriginal:
+          newStock.purchasePriceOriginal ?? newStock.purchasePrice,
         purchasePrice: purchasePriceUSD,
+        investedAmount: investedAmountUSD,
         historyOriginal: data.history,
         history: historyUSD,
         analyst,
