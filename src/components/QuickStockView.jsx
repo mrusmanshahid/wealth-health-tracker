@@ -18,6 +18,7 @@ import {
 import { fetchStockQuote, fetchStockHistory, fetchSingleStockNews } from '../services/stockApi';
 import { generateAnalystProjection, normalizeAnalyst } from '../utils/forecasting';
 import EarningsReport from './EarningsReport';
+import FundamentalsHealth from './FundamentalsHealth';
 import UnifiedStockChart from './UnifiedStockChart';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -81,6 +82,7 @@ export default function QuickStockView({
           name: historyResponse.name || stock.name,
           history: historyData,
           analyst,
+          fundamentals: historyResponse.fundamentals || quote?.fundamentals || stock.fundamentals || null,
           forecast,
           confidence,
           currentPrice,
@@ -257,6 +259,15 @@ export default function QuickStockView({
                     {quote.marketCap ? formatMarketCap(quote.marketCap) : '—'}
                   </p>
                 </div>
+              </div>
+            )}
+
+            {/* Health + analyst */}
+            {(stockData?.fundamentals || quote?.fundamentals || stock.fundamentals) && (
+              <div className="glass-card p-4 mb-6 border border-slate-light/20">
+                <FundamentalsHealth
+                  fundamentals={stockData?.fundamentals || quote?.fundamentals || stock.fundamentals}
+                />
               </div>
             )}
 

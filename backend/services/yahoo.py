@@ -197,8 +197,15 @@ def _yoy_from_annual(frame: Any, row_names: tuple[str, ...]) -> float | None:
         return None
 
 
-def _extract_fundamentals(ticker: yf.Ticker, info: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Key annual/TTM ratios with simple good/ok/bad signals for quick screening."""
+def _extract_fundamentals(
+    ticker: yf.Ticker,
+    info: dict[str, Any] | None = None,
+    light: bool = False,
+) -> dict[str, Any]:
+    """Key annual/TTM ratios with simple good/ok/bad signals for quick screening.
+
+    light=True skips annual statement YoY (faster for discovery lists).
+    """
     if info is None:
         try:
             info = ticker.info or {}
@@ -265,11 +272,11 @@ def _extract_fundamentals(ticker: yf.Ticker, info: dict[str, Any] | None = None)
             div_yield = None  # garbage / mis-scaled
 
 
-    # Optional YoY from annual statements (best-effort; skip for funds)
+    # Optional YoY from annual statements (best-effort; skip for funds / light mode)
     revenue_yoy = None
     net_income_yoy = None
     fcf_yoy = None
-    if not is_fund:
+    if not is_fund and not light:
         try:
             financials = ticker.financials
             revenue_yoy = _yoy_from_annual(
@@ -579,6 +586,7 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
         raise ValueError(f"Error fetching quote for {symbol}")
 
     analyst = _extract_analyst(ticker, info, price)
+    fundamentals = _extract_fundamentals(ticker, info, light=True)
 
     return {
         "symbol": (info.get("symbol") or symbol).upper(),
@@ -604,7 +612,37 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
         "exchange": info.get("exchange") or "",
         "quoteType": info.get("quoteType") or "",
         "analyst": analyst,
+        "fundamentals": fundamentals,
     }
+
+
+def _enrich_discovery_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Attach analyst + light fundamentals onto a discovery/screener row."""
+    symbol = item.get("symbol")
+    if not symbol:
+        return item
+    try:
+        quote = _quote_sync(symbol)
+        # Preserve screener-specific fields (discount, returns, category)
+        merged = {**quote, **{k: v for k, v in item.items() if v is not None}}
+        # Prefer live quote price/change when present
+        if quote.get("price"):
+            merged["price"] = quote["price"]
+        if quote.get("changePercent") is not None:
+            merged["changePercent"] = quote["changePercent"]
+        merged["analyst"] = quote.get("analyst")
+        merged["fundamentals"] = quote.get("fundamentals")
+        return merged
+    except Exception:
+        return item
+
+
+def _enrich_discovery_list(items: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+    trimmed = (items or [])[:limit]
+    if not trimmed:
+        return []
+    # Sequential is fine inside the threadpool worker; keeps Yahoo rate limits happier
+    return [_enrich_discovery_item(item) for item in trimmed]
 
 
 def _analyst_sync(symbol: str) -> dict[str, Any]:
@@ -743,7 +781,10 @@ def _movers_sync() -> dict[str, list[dict[str, Any]]]:
         for q in _screen_quotes("most_actives", 15)
         if q.get("symbol") and not is_crypto(q["symbol"]) and q.get("quoteType") == "EQUITY"
     ][:5]
-    return {"gainers": gainers, "active": active}
+    return {
+        "gainers": _enrich_discovery_list(gainers, 5),
+        "active": _enrich_discovery_list(active, 5),
+    }
 
 
 def _undervalued_sync() -> list[dict[str, Any]]:
@@ -771,15 +812,16 @@ def _undervalued_sync() -> list[dict[str, Any]]:
         )
         if len(stocks) >= 6:
             break
-    return stocks
+    return _enrich_discovery_list(stocks, 6)
 
 
 def _growth_sync() -> list[dict[str, Any]]:
-    return [
+    growth = [
         _map_screener_quote(q, "growth")
         for q in _screen_quotes("growth_technology_stocks", 10)
         if q.get("symbol") and not is_crypto(q["symbol"]) and q.get("quoteType") == "EQUITY"
     ][:6]
+    return _enrich_discovery_list(growth, 6)
 
 
 def _trending_sync() -> list[dict[str, Any]]:

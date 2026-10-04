@@ -18,6 +18,8 @@ import {
   Zap,
   Crown,
   BarChart3,
+  Activity,
+  Users,
 } from 'lucide-react';
 import { 
   fetchTrendingStocks, 
@@ -29,6 +31,97 @@ import {
   fetchHighPerformingEtfs,
 } from '../services/stockApi';
 import QuickStockView from './QuickStockView';
+
+function healthBadgeClasses(health) {
+  if (health === 'good') return 'bg-emerald-glow/20 text-emerald-bright border-emerald-glow/30';
+  if (health === 'weak') return 'bg-ruby/20 text-ruby-bright border-ruby/30';
+  if (health === 'mixed') return 'bg-amber/20 text-amber-bright border-amber/30';
+  return 'bg-slate-light/20 text-steel border-slate-light/20';
+}
+
+function healthLabel(health) {
+  if (health === 'good') return 'Healthy';
+  if (health === 'mixed') return 'Mixed';
+  if (health === 'weak') return 'Weak';
+  return 'N/A';
+}
+
+function formatInd(ind) {
+  if (!ind || ind.value == null) return null;
+  const n = Number(ind.value);
+  if (ind.unit === '%') return `${n.toFixed(0)}%`;
+  if (ind.unit === 'x') return `${n.toFixed(1)}×`;
+  if (ind.unit === 'M') {
+    const abs = Math.abs(n);
+    if (abs >= 1000) return `${(n / 1000).toFixed(0)}B`;
+    return `${n.toFixed(0)}M`;
+  }
+  return String(n);
+}
+
+function DiscoveryHealthStrip({ stock }) {
+  const fund = stock?.fundamentals;
+  const analyst = stock?.analyst;
+  if (!fund?.available && !analyst?.coverage) return null;
+
+  const topKeys = ['profitMargin', 'revenueGrowth', 'roe', 'trailingPE', 'debtToEquity'];
+  const chips = (fund?.indicators || [])
+    .filter((i) => topKeys.includes(i.key))
+    .slice(0, 3);
+
+  return (
+    <div className="mb-2 space-y-1.5">
+      <div className="flex flex-wrap items-center gap-1">
+        {fund?.available && (
+          <span
+            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${healthBadgeClasses(fund.health)}`}
+            title="Fundamentals health score"
+          >
+            <Activity className="w-2.5 h-2.5" />
+            {fund.score != null ? `${fund.score}` : '—'} · {healthLabel(fund.health)}
+          </span>
+        )}
+        {analyst?.rating && (
+          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-sapphire/30 bg-sapphire/15 text-sapphire-bright">
+            <Target className="w-2.5 h-2.5" />
+            {analyst.rating}
+            {analyst.upsidePercent != null && (
+              <span className={analyst.upsidePercent >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}>
+                {analyst.upsidePercent >= 0 ? '+' : ''}
+                {Number(analyst.upsidePercent).toFixed(0)}%
+              </span>
+            )}
+          </span>
+        )}
+        {analyst?.analystCount != null && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-steel">
+            <Users className="w-2.5 h-2.5" />
+            {analyst.analystCount}
+          </span>
+        )}
+      </div>
+      {chips.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {chips.map((ind) => (
+            <span
+              key={ind.key}
+              title={ind.tip}
+              className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                ind.signal === 'good'
+                  ? 'border-emerald-glow/25 bg-emerald-glow/10 text-emerald-bright'
+                  : ind.signal === 'bad'
+                    ? 'border-ruby/25 bg-ruby/10 text-ruby-bright'
+                    : 'border-slate-light/25 bg-slate-dark/40 text-silver'
+              }`}
+            >
+              {ind.label.split(' ')[0]} {formatInd(ind)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Horizontal scroll carousel component
 function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onViewDetails, isInPortfolio, isInWatchlist }) {
@@ -116,7 +209,7 @@ function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onVie
           return (
             <div
               key={stock.symbol || idx}
-              className="flex-shrink-0 w-[200px] bg-gradient-to-br from-slate-dark/80 to-slate-dark/40 rounded-lg p-3 border border-slate-light/20 hover:border-violet-500/40 transition-all group"
+              className="flex-shrink-0 w-[240px] bg-gradient-to-br from-slate-dark/80 to-slate-dark/40 rounded-lg p-3 border border-slate-light/20 hover:border-violet-500/40 transition-all group flex flex-col"
             >
               {/* Top Row */}
               <div className="flex items-start justify-between mb-2">
@@ -153,8 +246,15 @@ function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onVie
                 <div className={`text-xs flex items-center gap-1 ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
                   {isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                   {isUp ? '+' : ''}{stock.changePercent?.toFixed(1) || 0}%
+                  {stock.analyst?.targetMean != null && (
+                    <span className="text-steel ml-1">
+                      · tgt ${Number(stock.analyst.targetMean).toFixed(0)}
+                    </span>
+                  )}
                 </div>
               </div>
+
+              <DiscoveryHealthStrip stock={stock} />
 
               {/* Extra Info */}
               {stock.discountFromHigh && (
@@ -182,7 +282,7 @@ function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onVie
               )}
 
               {/* Quick Actions */}
-              <div className="flex gap-1.5 mt-auto">
+              <div className="flex gap-1.5 mt-auto pt-1">
                 <button
                   onClick={() => onViewDetails(stock)}
                   className="p-1.5 bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 rounded transition-colors"
@@ -250,7 +350,7 @@ function FeaturedStock({ stock, label, color, onWatch, onBuy, onViewDetails, isI
           </div>
           <p className="text-xs text-silver truncate mb-2">{stock.name}</p>
           
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 mb-2">
             <div>
               <p className="text-xl font-bold text-pearl font-mono">${stock.price?.toFixed(2)}</p>
               <div className={`flex items-center gap-1 text-xs ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
@@ -265,6 +365,8 @@ function FeaturedStock({ stock, label, color, onWatch, onBuy, onViewDetails, isI
               </div>
             )}
           </div>
+
+          <DiscoveryHealthStrip stock={stock} />
         </div>
 
         <div className="flex flex-col gap-1">
@@ -444,7 +546,7 @@ export default function StockDiscovery({
           </div>
           <div>
             <h2 className="text-base font-bold text-pearl">Discover Stocks</h2>
-            <p className="text-xs text-steel">Find your next opportunity</p>
+            <p className="text-xs text-steel">Health scores, analyst targets & key ratios</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -589,7 +691,8 @@ export default function StockDiscovery({
               <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
                 {sectorStocks.slice(0, 6).map((stock) => {
                   const isUp = (stock.changePercent || 0) >= 0;
-                  const inPortfolio = isInPortfolio(stock.symbol);
+                  const score = stock.fundamentals?.score;
+                  const health = stock.fundamentals?.health;
                   
                   return (
                     <div
@@ -602,6 +705,14 @@ export default function StockDiscovery({
                       <p className={`text-xs font-mono ${isUp ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
                         {isUp ? '+' : ''}{stock.changePercent?.toFixed(1)}%
                       </p>
+                      {score != null && (
+                        <p className={`text-[10px] mt-0.5 ${
+                          health === 'good' ? 'text-emerald-bright' :
+                          health === 'weak' ? 'text-ruby-bright' : 'text-amber-bright'
+                        }`}>
+                          Health {score}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
