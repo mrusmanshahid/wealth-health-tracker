@@ -349,6 +349,53 @@ def _looks_like_ticker(symbol: str | None) -> bool:
     return bool(re.fullmatch(r"[A-Z0-9]{1,6}(\.[A-Z]{1,3})?", s))
 
 
+def _promote_country_local(row: dict[str, Any]) -> None:
+    """Make the country-local listing the primary holding (no US/global framing)."""
+    if not row.get("usingAlternate"):
+        # Still drop bulky access alternate noise when status is available
+        access = row.get("access") or {}
+        if access.get("status") == "available":
+            access.pop("alternative", None)
+            row["access"] = access
+        return
+
+    # Promote display fields to primary
+    if row.get("displaySymbol"):
+        row["symbol"] = row["displaySymbol"]
+    if row.get("displayName"):
+        row["name"] = row["displayName"]
+    if row.get("displayPrice") is not None:
+        row["price"] = row["displayPrice"]
+    if row.get("displayShares") is not None:
+        row["shares"] = row["displayShares"]
+    if row.get("displayYieldPercent") is not None:
+        row["expectedYieldPercent"] = row["displayYieldPercent"]
+    if row.get("displayAnnualIncome") is not None:
+        row["expectedAnnualIncome"] = row["displayAnnualIncome"]
+
+    access = dict(row.get("access") or {})
+    alt = access.get("alternative") or {}
+    access["status"] = "available" if row.get("price") or row.get("kind") == "savings" else access.get("status")
+    access["localListing"] = True
+    # Country-first copy — avoid "alternate for US ticker" framing
+    local_name = alt.get("name") or row.get("name")
+    if local_name:
+        access["note"] = f"Local listing: {local_name}"
+    elif access.get("note"):
+        access["note"] = access["note"]
+    access.pop("alternative", None)
+    row["access"] = access
+    row["usingAlternate"] = False
+    row.pop("originalSymbol", None)
+    row.pop("originalName", None)
+    row.pop("displaySymbol", None)
+    row.pop("displayName", None)
+    row.pop("displayPrice", None)
+    row.pop("displayShares", None)
+    row.pop("displayYieldPercent", None)
+    row.pop("displayAnnualIncome", None)
+
+
 def _enrich_alternate_quote(row: dict[str, Any]) -> None:
     """Attach price / yield / income for an alternate onto the row for inline display."""
     access = row.get("access") or {}
@@ -358,10 +405,8 @@ def _enrich_alternate_quote(row: dict[str, Any]) -> None:
 
     amount = float(row.get("amount") or 0)
     alt_symbol = alt.get("symbol")
-    # Prefer alternate when original is hard to buy, or for local cash products
-    prefer = access.get("status") in ("unavailable", "limited") or (
-        row.get("kind") == "savings" and bool(alt_symbol)
-    )
+    # Prefer country-local listing whenever one is defined (simpler, local-first UX)
+    prefer = bool(alt_symbol)
 
     if not _looks_like_ticker(alt_symbol):
         alt["tradeable"] = False
@@ -525,9 +570,21 @@ def _project_sync(
             )
             sleeves.append({"symbol": h["symbol"], "amount": amount, "kind": kind[:-1]})
 
-    # Enrich alternates with live price / yield so the UI can show them inline
+    # Enrich alternates, then promote country-local tickers as the primary buy
     for row in allocation_plan:
         _enrich_alternate_quote(row)
+        _promote_country_local(row)
+
+    # Rebuild sleeves using localized symbols for backtest when available
+    sleeves = []
+    for row in allocation_plan:
+        sleeves.append(
+            {
+                "symbol": row.get("symbol") or "HYSA",
+                "amount": float(row.get("amount") or 0),
+                "kind": row.get("kind") or "etf",
+            }
+        )
 
     backtest = _backtest_portfolio(capital, sleeves, SAVINGS_ANNUAL_RATE)
 

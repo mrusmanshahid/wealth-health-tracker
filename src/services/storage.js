@@ -4,6 +4,7 @@ const STORAGE_KEY = 'stock_wealth_tracker_portfolio';
 const SETTINGS_KEY = 'stock_wealth_tracker_settings';
 const WATCHLIST_KEY = 'stock_wealth_tracker_watchlist';
 const CASH_KEY = 'stock_wealth_tracker_cash';
+const PLANS_KEY = 'stock_wealth_tracker_plans';
 
 export function savePortfolio(portfolio) {
   try {
@@ -110,12 +111,59 @@ export function loadWatchlist() {
   }
 }
 
+function cashAccountId() {
+  return `bank_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** Normalize legacy { balance, transactions } into multi-bank accounts. */
+export function normalizeCashData(raw = {}) {
+  const transactions = Array.isArray(raw.transactions) ? raw.transactions : [];
+  let accounts = Array.isArray(raw.accounts) ? raw.accounts.filter((a) => a && a.id) : [];
+
+  if (accounts.length === 0) {
+    const legacyBalance = Number(raw.balance) || 0;
+    const defaultId = 'bank_main';
+    accounts = [
+      {
+        id: defaultId,
+        name: 'Main account',
+        balance: legacyBalance,
+      },
+    ];
+    // Attach legacy txs to the default bank when missing accountId
+    for (const tx of transactions) {
+      if (!tx.accountId) tx.accountId = defaultId;
+    }
+  }
+
+  accounts = accounts.map((a) => ({
+    id: a.id,
+    name: (a.name || 'Account').trim() || 'Account',
+    balance: Math.max(0, Number(a.balance) || 0),
+  }));
+
+  const balance = accounts.reduce((s, a) => s + a.balance, 0);
+  return { accounts, transactions, balance };
+}
+
+export function createCashAccount(name = 'New bank') {
+  return {
+    id: cashAccountId(),
+    name: (name || 'New bank').trim() || 'New bank',
+    balance: 0,
+  };
+}
+
 export function saveCashData(cashData) {
   try {
-    localStorage.setItem(CASH_KEY, JSON.stringify({
-      ...cashData,
-      lastUpdated: new Date().toISOString(),
-    }));
+    const normalized = normalizeCashData(cashData);
+    localStorage.setItem(
+      CASH_KEY,
+      JSON.stringify({
+        ...normalized,
+        lastUpdated: new Date().toISOString(),
+      })
+    );
     return true;
   } catch (error) {
     console.error('Error saving cash data:', error);
@@ -127,18 +175,62 @@ export function loadCashData() {
   try {
     const data = localStorage.getItem(CASH_KEY);
     if (!data) {
-      return {
-        balance: 0,
-        transactions: [],
-      };
+      return normalizeCashData({ balance: 0, transactions: [], accounts: [] });
     }
-    return JSON.parse(data);
+    return normalizeCashData(JSON.parse(data));
   } catch (error) {
     console.error('Error loading cash data:', error);
+    return normalizeCashData({ balance: 0, transactions: [], accounts: [] });
+  }
+}
+
+/** Multi-portfolio investment plans (Project tab) */
+export function defaultInvestmentPlans() {
+  return {
+    countryCode: 'US',
+    monthlyContribution: 0,
+    selectedProfileId: 'balanced',
+    customSleeves: [
+      { id: 's1', kind: 'overnight', symbol: '', name: '', percent: 40 },
+      { id: 's2', kind: 'ticker', symbol: '', name: '', percent: 60 },
+    ],
+    // legacy field kept empty — old multi-profile portfolios ignored in new UX
+    portfolios: [],
+    funded: [],
+  };
+}
+
+export function saveInvestmentPlans(plans) {
+  try {
+    localStorage.setItem(
+      PLANS_KEY,
+      JSON.stringify({ ...plans, lastUpdated: new Date().toISOString() })
+    );
+    return true;
+  } catch (error) {
+    console.error('Error saving investment plans:', error);
+    return false;
+  }
+}
+
+export function loadInvestmentPlans() {
+  try {
+    const data = localStorage.getItem(PLANS_KEY);
+    if (!data) return defaultInvestmentPlans();
+    const parsed = JSON.parse(data);
+    const defaults = defaultInvestmentPlans();
     return {
-      balance: 0,
-      transactions: [],
+      ...defaults,
+      ...parsed,
+      customSleeves: parsed.customSleeves?.length
+        ? parsed.customSleeves
+        : defaults.customSleeves,
+      funded: parsed.funded || [],
+      selectedProfileId: parsed.selectedProfileId || defaults.selectedProfileId,
     };
+  } catch (error) {
+    console.error('Error loading investment plans:', error);
+    return defaultInvestmentPlans();
   }
 }
 

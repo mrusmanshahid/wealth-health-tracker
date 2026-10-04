@@ -19,7 +19,18 @@ import WealthProjector from './components/WealthProjector';
 import AuthModal from './components/AuthModal';
 
 import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks, fetchSingleStockNews } from './services/stockApi';
-import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist, saveCashData, loadCashData } from './services/storage';
+import {
+  savePortfolio,
+  loadPortfolio,
+  saveSettings,
+  loadSettings,
+  saveWatchlist,
+  loadWatchlist,
+  saveCashData,
+  loadCashData,
+  createCashAccount,
+  normalizeCashData,
+} from './services/storage';
 import {
   generateAnalystProjection,
   normalizeAnalyst,
@@ -64,6 +75,7 @@ function App() {
   const [watchlist, setWatchlist] = useState([]);
   const [prefillStock, setPrefillStock] = useState(null);
   const [cashBalance, setCashBalance] = useState(0);
+  const [cashAccounts, setCashAccounts] = useState([]);
   const [cashTransactions, setCashTransactions] = useState([]);
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -109,8 +121,12 @@ function App() {
         
         setSettings(savedSettings);
         setWatchlist(savedWatchlist);
-        setCashBalance(savedCashData.balance || 0);
-        setCashTransactions(savedCashData.transactions || []);
+        {
+          const cash = normalizeCashData(savedCashData);
+          setCashAccounts(cash.accounts);
+          setCashBalance(cash.balance);
+          setCashTransactions(cash.transactions);
+        }
 
         if (savedPortfolio.length > 0) {
           await refreshStockData(savedPortfolio);
@@ -146,10 +162,11 @@ function App() {
         settings,
         watchlist,
         cashBalance,
+        cashAccounts,
         cashTransactions,
       })
     );
-  }, [stocks, settings, watchlist, cashBalance, cashTransactions, userEmail, isLoading]);
+  }, [stocks, settings, watchlist, cashBalance, cashAccounts, cashTransactions, userEmail, isLoading]);
 
   const handleAuthSuccess = async (data) => {
     setUserEmail(data.email);
@@ -160,12 +177,13 @@ function App() {
       const portfolio = workspace?.portfolio || [];
       const nextSettings = workspace?.settings || loadSettings();
       const nextWatchlist = workspace?.watchlist || [];
-      const nextCash = workspace?.cash || { balance: 0, transactions: [] };
+      const nextCash = normalizeCashData(workspace?.cash || {});
 
       setSettings(nextSettings);
       setWatchlist(nextWatchlist);
-      setCashBalance(nextCash.balance || 0);
-      setCashTransactions(nextCash.transactions || []);
+      setCashAccounts(nextCash.accounts);
+      setCashBalance(nextCash.balance);
+      setCashTransactions(nextCash.transactions);
 
       if (portfolio.length > 0) {
         await refreshStockData(portfolio);
@@ -468,46 +486,99 @@ function App() {
     setEditingStock(null);
   };
 
+  const persistCashState = (accounts, transactions) => {
+    const normalized = normalizeCashData({ accounts, transactions });
+    setCashAccounts(normalized.accounts);
+    setCashBalance(normalized.balance);
+    setCashTransactions(normalized.transactions);
+    saveCashData(normalized);
+    return normalized;
+  };
+
+  /** Credit one bank (default: largest balance account). */
+  const creditCashAccount = (accounts, amount, accountId) => {
+    const list = accounts.length ? [...accounts] : [createCashAccount('Main account')];
+    let idx = list.findIndex((a) => a.id === accountId);
+    if (idx < 0) {
+      idx = list.reduce(
+        (best, a, i, arr) => ((a.balance || 0) > (arr[best].balance || 0) ? i : best),
+        0
+      );
+    }
+    list[idx] = { ...list[idx], balance: (list[idx].balance || 0) + amount };
+    return { accounts: list, accountId: list[idx].id };
+  };
+
+  /** Deduct across banks (prefer accountId, then largest balances). */
+  const debitCashAccounts = (accounts, amount, accountId) => {
+    const list = accounts.map((a) => ({ ...a }));
+    let remaining = amount;
+    const touched = [];
+
+    if (accountId) {
+      const idx = list.findIndex((a) => a.id === accountId);
+      if (idx >= 0) {
+        const take = Math.min(list[idx].balance || 0, remaining);
+        list[idx].balance = (list[idx].balance || 0) - take;
+        remaining -= take;
+        if (take > 0) touched.push({ accountId: list[idx].id, amount: take });
+      }
+    }
+
+    const order = [...list.keys()].sort(
+      (i, j) => (list[j].balance || 0) - (list[i].balance || 0)
+    );
+    for (const idx of order) {
+      if (remaining <= 0) break;
+      if (accountId && list[idx].id === accountId) continue;
+      const take = Math.min(list[idx].balance || 0, remaining);
+      if (take <= 0) continue;
+      list[idx].balance -= take;
+      remaining -= take;
+      touched.push({ accountId: list[idx].id, amount: take });
+    }
+
+    return { accounts: list, remaining, touched };
+  };
+
   const handleAddTransaction = (symbol, transaction) => {
     // If it's a sell transaction, add proceeds to cash
     if (transaction.type === 'sell') {
       const saleProceeds = transaction.shares * transaction.price;
+      const { accounts: nextAccounts, accountId } = creditCashAccount(
+        cashAccounts,
+        saleProceeds
+      );
       const newCashTransaction = {
         id: Date.now().toString(),
         type: 'sell',
         amount: saleProceeds,
         note: `Sold ${transaction.shares} shares of ${symbol}`,
         symbol,
+        accountId,
         date: transaction.date || new Date().toISOString(),
       };
-      
-      const newBalance = cashBalance + saleProceeds;
-      const newCashTransactions = [newCashTransaction, ...cashTransactions];
-      
-      setCashBalance(newBalance);
-      setCashTransactions(newCashTransactions);
-      saveCashData({ balance: newBalance, transactions: newCashTransactions });
+      persistCashState(nextAccounts, [newCashTransaction, ...cashTransactions]);
     }
     
     // If it's a buy transaction, deduct from cash if available
     if (transaction.type === 'buy') {
       const purchaseCost = transaction.shares * transaction.price;
       if (cashBalance >= purchaseCost) {
-        const newCashTransaction = {
-          id: Date.now().toString(),
+        const { accounts: nextAccounts, touched } = debitCashAccounts(
+          cashAccounts,
+          purchaseCost
+        );
+        const newCashTransactions = touched.map((t, i) => ({
+          id: `${Date.now()}_${i}`,
           type: 'buy',
-          amount: purchaseCost,
+          amount: t.amount,
           note: `Bought ${transaction.shares} shares of ${symbol}`,
           symbol,
+          accountId: t.accountId,
           date: transaction.date || new Date().toISOString(),
-        };
-        
-        const newBalance = cashBalance - purchaseCost;
-        const newCashTransactions = [newCashTransaction, ...cashTransactions];
-        
-        setCashBalance(newBalance);
-        setCashTransactions(newCashTransactions);
-        saveCashData({ balance: newBalance, transactions: newCashTransactions });
+        }));
+        persistCashState(nextAccounts, [...newCashTransactions, ...cashTransactions]);
       }
     }
 
@@ -637,65 +708,107 @@ function App() {
     setShowAddModal(true);
   };
 
-  // Cash management functions
-  const handleAddCash = (amount, note) => {
+  // Cash management functions (per bank account)
+  const handleAddCash = (amount, note, accountId) => {
+    const { accounts: nextAccounts, accountId: creditedId } = creditCashAccount(
+      cashAccounts,
+      amount,
+      accountId
+    );
     const newTransaction = {
       id: Date.now().toString(),
       type: 'deposit',
       amount,
       note,
+      accountId: creditedId,
       date: new Date().toISOString(),
     };
-    
-    const newBalance = cashBalance + amount;
-    const newTransactions = [newTransaction, ...cashTransactions];
-    
-    setCashBalance(newBalance);
-    setCashTransactions(newTransactions);
-    saveCashData({ balance: newBalance, transactions: newTransactions });
+    persistCashState(nextAccounts, [newTransaction, ...cashTransactions]);
   };
 
-  const handleWithdrawCash = (amount, note) => {
+  const handleWithdrawCash = (amount, note, accountId) => {
     if (amount > cashBalance) return;
-    
-    const newTransaction = {
-      id: Date.now().toString(),
-      type: 'withdrawal',
+    if (accountId) {
+      const account = cashAccounts.find((a) => a.id === accountId);
+      if (!account || amount > (account.balance || 0)) return;
+    }
+    const { accounts: nextAccounts, remaining, touched } = debitCashAccounts(
+      cashAccounts,
       amount,
+      accountId
+    );
+    if (remaining > 0.0001) return;
+    const newTransactions = touched.map((t, i) => ({
+      id: `${Date.now()}_${i}`,
+      type: 'withdrawal',
+      amount: t.amount,
       note,
+      accountId: t.accountId,
       date: new Date().toISOString(),
-    };
-    
-    const newBalance = cashBalance - amount;
-    const newTransactions = [newTransaction, ...cashTransactions];
-    
-    setCashBalance(newBalance);
-    setCashTransactions(newTransactions);
-    saveCashData({ balance: newBalance, transactions: newTransactions });
+    }));
+    persistCashState(nextAccounts, [...newTransactions, ...cashTransactions]);
+  };
+
+  const handleAddCashAccount = (name) => {
+    const account = createCashAccount(name);
+    persistCashState([...cashAccounts, account], cashTransactions);
+  };
+
+  const handleRenameCashAccount = (accountId, name) => {
+    const next = cashAccounts.map((a) =>
+      a.id === accountId ? { ...a, name: name.trim() || a.name } : a
+    );
+    persistCashState(next, cashTransactions);
+  };
+
+  const handleRemoveCashAccount = (accountId) => {
+    if (cashAccounts.length <= 1) return;
+    const target = cashAccounts.find((a) => a.id === accountId);
+    if (!target) return;
+    if ((target.balance || 0) > 0) {
+      // Move remaining balance into the first other account
+      const others = cashAccounts.filter((a) => a.id !== accountId);
+      others[0] = {
+        ...others[0],
+        balance: (others[0].balance || 0) + (target.balance || 0),
+      };
+      const moveTx = {
+        id: Date.now().toString(),
+        type: 'deposit',
+        amount: target.balance || 0,
+        note: `Moved from ${target.name}`,
+        accountId: others[0].id,
+        date: new Date().toISOString(),
+      };
+      persistCashState(others, [moveTx, ...cashTransactions]);
+      return;
+    }
+    persistCashState(
+      cashAccounts.filter((a) => a.id !== accountId),
+      cashTransactions
+    );
   };
 
   // Update handleAddStock to deduct from cash if available
-  const originalHandleAddStock = handleAddStock;
   const handleAddStockWithCash = async (newStock) => {
     const investedAmount = newStock.investedAmount || (newStock.shares * newStock.purchasePrice);
     
     // Deduct from cash if we have enough
     if (cashBalance >= investedAmount) {
-      const newTransaction = {
-        id: Date.now().toString(),
+      const { accounts: nextAccounts, touched } = debitCashAccounts(
+        cashAccounts,
+        investedAmount
+      );
+      const newTransactions = touched.map((t, i) => ({
+        id: `${Date.now()}_${i}`,
         type: 'buy',
-        amount: investedAmount,
+        amount: t.amount,
         note: `Bought ${newStock.symbol}`,
         symbol: newStock.symbol,
+        accountId: t.accountId,
         date: new Date().toISOString(),
-      };
-      
-      const newBalance = cashBalance - investedAmount;
-      const newTransactions = [newTransaction, ...cashTransactions];
-      
-      setCashBalance(newBalance);
-      setCashTransactions(newTransactions);
-      saveCashData({ balance: newBalance, transactions: newTransactions });
+      }));
+      persistCashState(nextAccounts, [...newTransactions, ...cashTransactions]);
     }
     
     // Continue with original add stock logic
@@ -825,9 +938,13 @@ function App() {
         {activeTab === 'cash' && (
           <InvestableCash
             cashBalance={cashBalance}
+            cashAccounts={cashAccounts}
             cashTransactions={cashTransactions}
             onAddCash={handleAddCash}
             onWithdrawCash={handleWithdrawCash}
+            onAddAccount={handleAddCashAccount}
+            onRenameAccount={handleRenameCashAccount}
+            onRemoveAccount={handleRemoveCashAccount}
             portfolioStocks={stocks}
             watchlistStocks={watchlist}
             undervaluedStocks={undervaluedStocks}
@@ -855,7 +972,12 @@ function App() {
           />
         )}
 
-        {activeTab === 'project' && <WealthProjector />}
+        {activeTab === 'project' && (
+          <WealthProjector
+            cashBalance={cashBalance}
+            onAllocateCash={(amount, note) => handleWithdrawCash(amount, note)}
+          />
+        )}
 
         {/* Floating add on portfolio (mobile) */}
         {activeTab === 'portfolio' && stocks.length > 0 && (

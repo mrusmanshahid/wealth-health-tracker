@@ -626,6 +626,23 @@ SYMBOL_ACCESS: dict[str, dict[str, dict[str, Any]]] = {
 }
 
 
+def overnight_product(country_code: str) -> dict[str, str]:
+    """Local overnight / cash product label for a country."""
+    code = (country_code or "US").upper()
+    access = (SYMBOL_ACCESS.get("HYSA") or {}).get(code) or {}
+    alt = access.get("alternative") or {}
+    if alt.get("symbol"):
+        return {
+            "symbol": alt["symbol"],
+            "name": alt.get("name") or alt["symbol"],
+        }
+    country = COUNTRIES.get(code) or COUNTRIES["US"]
+    return {
+        "symbol": "HYSA" if code == "US" else "Cash",
+        "name": country.get("savingsNote") or "Overnight / savings account",
+    }
+
+
 def list_countries() -> list[dict[str, Any]]:
     return [
         {
@@ -636,6 +653,7 @@ def list_countries() -> list[dict[str, Any]]:
             "brokers": c["brokers"],
             "savingsNote": c["savingsNote"],
             "notes": c["notes"],
+            "overnight": overnight_product(c["code"]),
         }
         for c in COUNTRIES.values()
     ]
@@ -679,11 +697,16 @@ def resolve_access(symbol: str, country_code: str) -> dict[str, Any]:
         else "unavailable"
     )
 
+    # Prefer symbol-specific note; avoid attaching country ETF boilerplate to every stock
+    note = entry.get("note")
+    if not note and not entry.get("alternative") and status != "available":
+        note = country.get("notes")
+
     return {
         "country": code,
         "status": status,
         "available": available is True,
         "brokers": brokers,
         "alternative": entry.get("alternative"),
-        "note": entry.get("note") or country.get("notes"),
+        "note": note,
     }

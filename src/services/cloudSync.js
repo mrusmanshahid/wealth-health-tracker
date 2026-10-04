@@ -4,6 +4,7 @@ import {
   loadPortfolio,
   loadSettings,
   loadWatchlist,
+  normalizeCashData,
   saveCashData,
   savePortfolio,
   saveSettings,
@@ -12,7 +13,14 @@ import {
 
 let saveTimer = null;
 
-export function buildWorkspace({ stocks, settings, watchlist, cashBalance, cashTransactions }) {
+export function buildWorkspace({
+  stocks,
+  settings,
+  watchlist,
+  cashBalance,
+  cashAccounts,
+  cashTransactions,
+}) {
   // Strip heavy/live fields before saving
   const portfolio = (stocks || []).map((stock) => ({
     symbol: stock.symbol,
@@ -35,6 +43,7 @@ export function buildWorkspace({ stocks, settings, watchlist, cashBalance, cashT
     watchlist: watchlist || [],
     cash: {
       balance: cashBalance || 0,
+      accounts: cashAccounts || [],
       transactions: cashTransactions || [],
     },
   };
@@ -56,7 +65,7 @@ export async function resolveWorkspaceOnLogin() {
     savePortfolio(cloudPortfolio);
     if (cloud.settings) saveSettings(cloud.settings);
     if (cloud.watchlist) saveWatchlist(cloud.watchlist);
-    if (cloud.cash) saveCashData(cloud.cash);
+    if (cloud.cash) saveCashData(normalizeCashData(cloud.cash));
     return cloud;
   }
 
@@ -66,7 +75,7 @@ export async function resolveWorkspaceOnLogin() {
       portfolio: localPortfolio,
       settings: loadSettings(),
       watchlist: loadWatchlist(),
-      cash: loadCashData(),
+      cash: normalizeCashData(loadCashData()),
     };
     return saveWorkspace(payload);
   }

@@ -1,67 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Area,
-  CartesianGrid,
-  ComposedChart,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
-  AlertTriangle,
   Calculator,
   Globe2,
   Landmark,
   Loader2,
-  PiggyBank,
-  Shield,
+  Plus,
+  Search,
   Sparkles,
+  Trash2,
   TrendingUp,
-  Zap,
+  Wallet,
 } from 'lucide-react';
 import {
   fetchProjectorCountries,
   fetchProjectorProfiles,
+  fetchStockQuote,
   projectWealth,
+  searchStocks,
 } from '../services/stockApi';
-
-function AccessBadge({ status }) {
-  if (status === 'available') {
-    return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-bright">
-        Available
-      </span>
-    );
-  }
-  if (status === 'limited') {
-    return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber/15 text-amber-bright">
-        Limited
-      </span>
-    );
-  }
-  return (
-    <span className="text-[10px] px-1.5 py-0.5 rounded bg-ruby/15 text-ruby-bright">
-      Unavailable
-    </span>
-  );
-}
-
-const PROFILE_ICONS = {
-  safe: Shield,
-  balanced: PiggyBank,
-  growth: TrendingUp,
-  aggressive: Zap,
-};
-
-const PROFILE_COLORS = {
-  safe: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-bright',
-  balanced: 'border-sapphire/40 bg-sapphire/10 text-sapphire-bright',
-  growth: 'border-amber/40 bg-amber/10 text-amber-bright',
-  aggressive: 'border-ruby/40 bg-ruby/10 text-ruby-bright',
-};
+import {
+  loadInvestmentPlans,
+  saveInvestmentPlans,
+} from '../services/storage';
 
 function formatMoney(n) {
   if (n == null || Number.isNaN(n)) return '—';
@@ -78,44 +38,92 @@ function formatPct(n, digits = 1) {
   return `${sign}${Number(n).toFixed(digits)}%`;
 }
 
-function ChartTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
-  const point = payload[0]?.payload;
-  const base = payload.find((p) => p.dataKey === 'value');
-  const worst = payload.find((p) => p.dataKey === 'worstValue');
+function uid(prefix = 's') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function pctTotal(items, key = 'percent') {
+  return items.reduce((s, i) => s + (Number(i[key]) || 0), 0);
+}
+
+function riskDots(level) {
   return (
-    <div className="rounded-lg border border-slate-light/30 bg-obsidian/95 px-3 py-2 text-xs shadow-xl">
-      <p className="text-steel mb-1">{label}</p>
-      {base?.value != null && (
-        <p className="font-semibold text-emerald-bright">
-          Base {formatMoney(base.value)}
-        </p>
-      )}
-      {worst?.value != null && (
-        <p className="font-semibold text-ruby-bright mt-0.5">
-          Worst {formatMoney(worst.value)}
-        </p>
-      )}
-      {point?.isForecast && <p className="text-amber-bright mt-0.5">Projected</p>}
+    <span className="inline-flex gap-0.5" aria-label={`Risk ${level} of 4`}>
+      {[1, 2, 3, 4].map((i) => (
+        <span
+          key={i}
+          className={`w-1.5 h-1.5 rounded-full ${
+            i <= level ? 'bg-emerald-bright' : 'bg-slate-light/30'
+          }`}
+        />
+      ))}
+    </span>
+  );
+}
+
+function HoldingList({ rows }) {
+  if (!rows?.length) return null;
+  return (
+    <div className="divide-y divide-slate-light/10 rounded-xl border border-slate-light/20 overflow-hidden">
+      {rows.map((row) => (
+        <div
+          key={`${row.kind}-${row.symbol}-${row.role || row.percent}`}
+          className="flex items-start justify-between gap-3 px-3 py-2.5 bg-slate-dark/40"
+        >
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-pearl text-sm">{row.symbol}</span>
+              <span className="text-[10px] text-steel uppercase tracking-wide">
+                {row.kind === 'savings' || row.kind === 'overnight' ? 'Overnight' : row.kind}
+              </span>
+              <span className="text-[10px] font-mono text-silver">{row.percent}%</span>
+            </div>
+            <p className="text-[11px] text-steel truncate">{row.name}</p>
+            {row.access?.brokers?.length > 0 && (
+              <p className="text-[10px] text-silver mt-0.5">
+                <Landmark className="w-3 h-3 inline mr-0.5" />
+                {row.access.brokers.map((b) => b.name).join(', ')}
+              </p>
+            )}
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
+            {row.expectedAnnualIncome != null && (
+              <p className="text-[10px] text-emerald-bright font-mono">
+                ~{formatMoney(row.expectedAnnualIncome)}/yr
+              </p>
+            )}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
 
-export default function WealthProjector() {
+export default function WealthProjector({ cashBalance = 0, onAllocateCash }) {
+  const [tab, setTab] = useState('suggested'); // suggested | custom | dashboard
   const [profiles, setProfiles] = useState([]);
   const [countries, setCountries] = useState([]);
-  const [capitalInput, setCapitalInput] = useState('100000');
-  const [profileId, setProfileId] = useState('balanced');
-  const [countryCode, setCountryCode] = useState('US');
-  const [result, setResult] = useState(null);
-  const [isLoadingProfiles, setIsLoadingProfiles] = useState(true);
-  const [isProjecting, setIsProjecting] = useState(false);
+  const [plans, setPlans] = useState(() => loadInvestmentPlans());
+  const [cashInput, setCashInput] = useState(String(cashBalance || 10000));
+  const [suggestedResult, setSuggestedResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [funding, setFunding] = useState(false);
+  const [dashBusy, setDashBusy] = useState(false);
+  const [dashRows, setDashRows] = useState([]);
   const [error, setError] = useState(null);
+  const [searchFor, setSearchFor] = useState(null); // sleeve id
+  const [searchQ, setSearchQ] = useState('');
+  const [searchHits, setSearchHits] = useState([]);
+  const [searchBusy, setSearchBusy] = useState(false);
+
+  useEffect(() => {
+    if (cashBalance > 0) setCashInput(String(Math.round(cashBalance)));
+  }, [cashBalance]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setIsLoadingProfiles(true);
       const [profileData, countryData] = await Promise.all([
         fetchProjectorProfiles(),
         fetchProjectorCountries(),
@@ -123,7 +131,6 @@ export default function WealthProjector() {
       if (!cancelled) {
         setProfiles(profileData || []);
         setCountries(countryData || []);
-        setIsLoadingProfiles(false);
       }
     })();
     return () => {
@@ -132,56 +139,402 @@ export default function WealthProjector() {
   }, []);
 
   useEffect(() => {
-    if (profiles.length === 0) return;
-    runProjection();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profiles, profileId, countryCode]);
+    saveInvestmentPlans(plans);
+  }, [plans]);
 
-  const runProjection = async () => {
-    const capital = Number(String(capitalInput).replace(/,/g, ''));
-    if (!capital || capital <= 0) {
-      setError('Enter a capital amount greater than 0');
+  const cash = Number(String(cashInput).replace(/,/g, '')) || 0;
+  const monthly = Number(plans.monthlyContribution) || 0;
+  const country = countries.find((c) => c.code === plans.countryCode);
+  const overnight = country?.overnight || {
+    symbol: 'HYSA',
+    name: country?.savingsNote || 'Overnight savings',
+  };
+  const selectedProfile =
+    profiles.find((p) => p.id === plans.selectedProfileId) || profiles[0];
+
+  const customTotal = pctTotal(plans.customSleeves || []);
+
+  const patchPlans = (patch) => setPlans((prev) => ({ ...prev, ...patch }));
+
+  const updateSleeve = (id, patch) => {
+    patchPlans({
+      customSleeves: (plans.customSleeves || []).map((s) =>
+        s.id === id ? { ...s, ...patch } : s
+      ),
+    });
+  };
+
+  const addSleeve = (kind = 'ticker') => {
+    patchPlans({
+      customSleeves: [
+        ...(plans.customSleeves || []),
+        {
+          id: uid(),
+          kind,
+          symbol: kind === 'overnight' ? overnight.symbol : '',
+          name: kind === 'overnight' ? overnight.name : '',
+          percent: 0,
+        },
+      ],
+    });
+  };
+
+  const removeSleeve = (id) => {
+    const next = (plans.customSleeves || []).filter((s) => s.id !== id);
+    if (next.length === 0) return;
+    patchPlans({ customSleeves: next });
+  };
+
+  const normalizeCustom = () => {
+    const sleeves = plans.customSleeves || [];
+    const total = pctTotal(sleeves);
+    if (total <= 0) return sleeves;
+    return sleeves.map((s) => ({
+      ...s,
+      percent: Math.round(((Number(s.percent) || 0) / total) * 1000) / 10,
+    }));
+  };
+
+  // --- Suggested country plan ---
+  const buildSuggested = async () => {
+    if (cash <= 0) {
+      setError('Enter how much cash you want to invest');
+      return;
+    }
+    if (!plans.selectedProfileId && !selectedProfile) {
+      setError('Pick a risk profile');
       return;
     }
     setError(null);
-    setIsProjecting(true);
+    setBusy(true);
+    setSuggestedResult(null);
     try {
-      const data = await projectWealth(capital, profileId, countryCode);
-      setResult(data);
+      const data = await projectWealth(
+        cash,
+        plans.selectedProfileId || selectedProfile.id,
+        plans.countryCode
+      );
+      setSuggestedResult(data);
     } catch (err) {
-      console.error(err);
-      setError(err.message || 'Could not run projection');
+      setError(err.message || 'Could not build plan');
     }
-    setIsProjecting(false);
+    setBusy(false);
   };
 
-  const selectedCountry = countries.find((c) => c.code === countryCode);
+  const fundSuggested = async () => {
+    if (!suggestedResult) return;
+    setFunding(true);
+    setError(null);
+    try {
+      const fundedAt = new Date().toISOString();
+      const holdings = (suggestedResult.allocationPlan || []).map((row) => ({
+        symbol: row.symbol,
+        name: row.name,
+        kind: row.kind === 'savings' ? 'overnight' : row.kind,
+        weightPercent: row.percent,
+        amount: row.amount,
+        shares: row.shares || (row.price > 0 ? row.amount / row.price : 0),
+        purchasePrice: row.price || 0,
+      }));
+      const snapshot = {
+        id: uid('fund'),
+        source: 'suggested',
+        name: `${suggestedResult.profile?.name || 'Plan'} · ${country?.name || plans.countryCode}`,
+        profileId: suggestedResult.profile?.id,
+        countryCode: plans.countryCode,
+        investedAmount: cash,
+        monthlyShare: monthly,
+        fundedAt,
+        holdings,
+      };
+      patchPlans({ funded: [snapshot, ...(plans.funded || [])].slice(0, 30) });
+      if (typeof onAllocateCash === 'function' && cash > 0) {
+        onAllocateCash(cash, `Funded suggested plan: ${snapshot.name}`);
+      }
+      setTab('dashboard');
+    } catch (err) {
+      setError(err.message || 'Could not fund plan');
+    }
+    setFunding(false);
+  };
 
-  const chartData = useMemo(() => {
-    if (!result) return [];
-    const back = (result.backtest?.points || []).map((p) => ({
-      ...p,
-      label: p.date?.slice(0, 7),
-      series: 'backtest',
-    }));
-    const fore = (result.forecast?.points || []).map((p) => ({
-      ...p,
-      label: p.date?.slice(0, 7),
-      series: 'forecast',
-    }));
-    // Show backtest and forecast as separate visual segments in one list
-    return [...back, ...fore];
-  }, [result]);
+  // --- Custom plan ---
+  const runSearch = async (q) => {
+    setSearchQ(q);
+    if (!q || q.length < 1) {
+      setSearchHits([]);
+      return;
+    }
+    setSearchBusy(true);
+    const hits = await searchStocks(q);
+    setSearchHits((hits || []).slice(0, 8));
+    setSearchBusy(false);
+  };
 
-  const riskDots = (level) =>
-    Array.from({ length: 4 }, (_, i) => (
-      <span
-        key={i}
-        className={`inline-block w-1.5 h-1.5 rounded-full ${
-          i < level ? 'bg-current' : 'bg-slate-light/40'
-        }`}
-      />
-    ));
+  const fundCustom = async () => {
+    const sleeves = normalizeCustom();
+    if (cash <= 0) {
+      setError('Enter how much cash you want to invest');
+      return;
+    }
+    if (Math.abs(pctTotal(sleeves) - 100) > 0.6) {
+      setError('Allocation must total 100%. Use Normalize or adjust percentages.');
+      return;
+    }
+    for (const s of sleeves) {
+      if (s.kind === 'ticker' && !s.symbol?.trim()) {
+        setError('Every stock/ETF line needs a symbol');
+        return;
+      }
+    }
+
+    setFunding(true);
+    setError(null);
+    try {
+      const holdings = [];
+      for (const s of sleeves) {
+        const amount = (cash * (Number(s.percent) || 0)) / 100;
+        if (s.kind === 'overnight') {
+          holdings.push({
+            symbol: overnight.symbol || s.symbol || 'Cash',
+            name: overnight.name || s.name || 'Overnight account',
+            kind: 'overnight',
+            weightPercent: s.percent,
+            amount,
+            shares: 0,
+            purchasePrice: 0,
+          });
+          continue;
+        }
+        const symbol = s.symbol.trim().toUpperCase();
+        let price = 0;
+        let name = s.name || symbol;
+        try {
+          const q = await fetchStockQuote(symbol);
+          price = q?.price || 0;
+          name = q?.name || name;
+        } catch {
+          // keep symbol even if quote fails
+        }
+        holdings.push({
+          symbol,
+          name,
+          kind: 'ticker',
+          weightPercent: s.percent,
+          amount,
+          shares: price > 0 ? amount / price : 0,
+          purchasePrice: price,
+        });
+      }
+
+      const snapshot = {
+        id: uid('fund'),
+        source: 'custom',
+        name: `Custom · ${country?.name || plans.countryCode}`,
+        countryCode: plans.countryCode,
+        investedAmount: cash,
+        monthlyShare: monthly,
+        fundedAt: new Date().toISOString(),
+        holdings,
+      };
+      patchPlans({
+        customSleeves: sleeves,
+        funded: [snapshot, ...(plans.funded || [])].slice(0, 30),
+      });
+      if (typeof onAllocateCash === 'function' && cash > 0) {
+        onAllocateCash(cash, `Funded custom plan (${holdings.length} sleeves)`);
+      }
+      setTab('dashboard');
+    } catch (err) {
+      setError(err.message || 'Could not fund custom plan');
+    }
+    setFunding(false);
+  };
+
+  // --- Dashboard ---
+  const refreshDashboard = async () => {
+    const funded = plans.funded || [];
+    if (!funded.length) {
+      setDashRows([]);
+      return;
+    }
+    setDashBusy(true);
+    try {
+      const rows = await Promise.all(
+        funded.map(async (fp) => {
+          let currentValue = 0;
+          const holdingValues = [];
+          for (const h of fp.holdings || []) {
+            if (
+              h.kind === 'overnight' ||
+              h.kind === 'savings' ||
+              !h.symbol ||
+              h.symbol === 'HYSA' ||
+              h.symbol === 'Tagesgeld' ||
+              h.symbol === 'Cash' ||
+              !(h.shares > 0)
+            ) {
+              const v = h.amount || 0;
+              currentValue += v;
+              holdingValues.push({ ...h, currentValue: v });
+              continue;
+            }
+            try {
+              const q = await fetchStockQuote(h.symbol);
+              const price = q?.price || h.purchasePrice || 0;
+              const value = (h.shares || 0) * price;
+              currentValue += value;
+              holdingValues.push({ ...h, currentPrice: price, currentValue: value });
+            } catch {
+              const v = h.amount || 0;
+              currentValue += v;
+              holdingValues.push({ ...h, currentValue: v });
+            }
+          }
+          const invested = fp.investedAmount || 0;
+          const pnl = currentValue - invested;
+          const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
+          return { ...fp, currentValue, pnl, pnlPct, holdingValues };
+        })
+      );
+      rows.sort((a, b) => b.pnlPct - a.pnlPct);
+      setDashRows(rows);
+    } catch (err) {
+      setError(err.message || 'Dashboard refresh failed');
+    }
+    setDashBusy(false);
+  };
+
+  useEffect(() => {
+    if (tab === 'dashboard') refreshDashboard();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, plans.funded]);
+
+  const applyMonthly = () => {
+    if (monthly <= 0) {
+      setError('Set a monthly extra amount first');
+      return;
+    }
+    if (cashBalance > 0 && monthly > cashBalance) {
+      setError(`Not enough cash (need ${formatMoney(monthly)})`);
+      return;
+    }
+    const funded = plans.funded || [];
+    if (!funded.length) {
+      setError('Fund a plan before applying monthly contributions');
+      return;
+    }
+    setError(null);
+    // Apply to most recent funded plan (or all equally — prefer latest)
+    const latest = funded[0];
+    const weightSum =
+      (latest.holdings || []).reduce((s, h) => s + (Number(h.weightPercent) || 0), 0) ||
+      100;
+    const holdings = (latest.holdings || []).map((h) => {
+      const add = (monthly * (Number(h.weightPercent) || 0)) / weightSum;
+      const price = h.purchasePrice || 0;
+      const isCash =
+        h.kind === 'overnight' || h.kind === 'savings' || !(price > 0);
+      return {
+        ...h,
+        amount: (h.amount || 0) + add,
+        shares: isCash ? h.shares || 0 : (h.shares || 0) + add / price,
+      };
+    });
+    const updated = {
+      ...latest,
+      holdings,
+      investedAmount: (latest.investedAmount || 0) + monthly,
+      monthlyApplied: [
+        ...(latest.monthlyApplied || []),
+        { amount: monthly, at: new Date().toISOString() },
+      ],
+    };
+    patchPlans({
+      funded: [updated, ...funded.slice(1)],
+    });
+    if (typeof onAllocateCash === 'function') {
+      onAllocateCash(monthly, `Monthly extra into ${updated.name}`);
+    }
+  };
+
+  const tabs = [
+    { id: 'suggested', label: 'Country plan' },
+    { id: 'custom', label: 'Custom' },
+    { id: 'dashboard', label: 'Dashboard' },
+  ];
+
+  const sharedControls = (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+      <div>
+        <label className="block text-xs uppercase tracking-wide text-steel mb-1">
+          Country
+        </label>
+        <div className="relative">
+          <Globe2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+          <select
+            value={plans.countryCode}
+            onChange={(e) => {
+              patchPlans({ countryCode: e.target.value });
+              setSuggestedResult(null);
+            }}
+            className="glass-input w-full pl-9 appearance-none"
+          >
+            {countries.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs uppercase tracking-wide text-steel mb-1">
+          Cash to invest
+        </label>
+        <div className="relative">
+          <Wallet className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+          <input
+            type="number"
+            min="0"
+            value={cashInput}
+            onChange={(e) => {
+              setCashInput(e.target.value);
+              setSuggestedResult(null);
+            }}
+            className="glass-input w-full pl-9"
+          />
+        </div>
+        {cashBalance > 0 && (
+          <button
+            type="button"
+            className="text-[11px] text-emerald-bright mt-1"
+            onClick={() => setCashInput(String(Math.round(cashBalance)))}
+          >
+            Use available cash ({formatMoney(cashBalance)})
+          </button>
+        )}
+      </div>
+      <div>
+        <label className="block text-xs uppercase tracking-wide text-steel mb-1">
+          Monthly extra
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={plans.monthlyContribution || ''}
+          onChange={(e) =>
+            patchPlans({ monthlyContribution: Number(e.target.value) || 0 })
+          }
+          className="glass-input w-full"
+          placeholder="0"
+        />
+        <p className="text-[11px] text-steel mt-1">
+          Added later with the same mix
+        </p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="glass-card p-4 sm:p-5">
@@ -191,756 +544,484 @@ export default function WealthProjector() {
             <Calculator className="w-5 h-5 text-emerald-bright" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-pearl">Wealth Projector</h2>
-            <p className="text-sm text-steel max-w-xl">
-              Pick capital, country, and risk — see what to buy, brokers, income, and outlook.
+            <h2 className="text-lg font-bold text-pearl">Project</h2>
+            <p className="text-sm text-steel max-w-lg">
+              Suggested country plans, or build your own mix of overnight cash and stocks/ETFs.
             </p>
           </div>
         </div>
+        <div className="flex gap-1 p-1 rounded-xl bg-slate-dark/50 border border-slate-light/20 self-start">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                setTab(t.id);
+                setError(null);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${
+                tab === t.id
+                  ? 'bg-emerald-glow/20 text-emerald-bright'
+                  : 'text-steel hover:text-pearl'
+              }`}
+            >
+              {t.label}
+              {t.id === 'dashboard' && (plans.funded?.length || 0) > 0
+                ? ` (${plans.funded.length})`
+                : ''}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Capital + profiles */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
-        <div className="lg:col-span-1 space-y-3">
-          <label className="block text-xs uppercase tracking-wide text-steel">
-            Country
-          </label>
-          <div className="relative">
-            <Globe2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
-            <select
-              value={countryCode}
-              onChange={(e) => setCountryCode(e.target.value)}
-              className="glass-input w-full pl-9 appearance-none cursor-pointer"
-              disabled={isLoadingProfiles || countries.length === 0}
-            >
-              {countries.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.flag} {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          {selectedCountry && (
-            <p className="text-[11px] text-steel leading-snug">
-              Brokers: {selectedCountry.brokers.map((b) => b.name).join(' · ')}
-            </p>
-          )}
+      {error && (
+        <div className="mb-4 p-3 rounded-xl border border-ruby/30 bg-ruby/10 text-sm text-ruby-bright">
+          {error}
+        </div>
+      )}
 
-          <label className="block text-xs uppercase tracking-wide text-steel pt-1">
-            Total capital
-          </label>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-steel">$</span>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={capitalInput}
-              onChange={(e) => setCapitalInput(e.target.value)}
-              className="glass-input w-full pl-7 text-lg font-semibold"
-              placeholder="100000"
-            />
+      {/* ========== SUGGESTED ========== */}
+      {tab === 'suggested' && (
+        <>
+          <p className="text-sm text-silver mb-4">
+            We suggest a full allocation for your country based on a risk profile — local overnight products and ETFs where we have them.
+          </p>
+          {sharedControls}
+
+          <h3 className="text-sm font-semibold text-pearl mb-2 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-bright" />
+            Pick a profile
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+            {profiles.map((p) => {
+              const active = plans.selectedProfileId === p.id;
+              const a = p.allocations || {};
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    patchPlans({ selectedProfileId: p.id });
+                    setSuggestedResult(null);
+                  }}
+                  className={`text-left rounded-xl border p-3 transition-colors ${
+                    active
+                      ? 'border-emerald-bright/50 bg-emerald-500/10'
+                      : 'border-slate-light/20 bg-slate-dark/30 hover:border-slate-light/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-semibold text-pearl">{p.name}</span>
+                    {riskDots(p.riskLevel)}
+                  </div>
+                  <p className="text-[11px] text-steel mb-2">{p.tagline}</p>
+                  <div className="flex flex-wrap gap-2 text-[10px] font-mono text-silver">
+                    <span>Cash {Math.round((a.savings || 0) * 100)}%</span>
+                    <span>ETFs {Math.round((a.etfs || 0) * 100)}%</span>
+                    <span>Stocks {Math.round((a.stocks || 0) * 100)}%</span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {[25000, 50000, 100000, 250000].map((preset) => (
+
+          <div className="flex flex-wrap gap-2 mb-5">
+            <button
+              type="button"
+              onClick={buildSuggested}
+              disabled={busy}
+              className="btn-primary flex items-center gap-2 min-h-[44px]"
+            >
+              {busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+              Build country plan
+            </button>
+            {suggestedResult && (
               <button
-                key={preset}
                 type="button"
-                onClick={() => setCapitalInput(String(preset))}
-                className="px-2.5 py-1 rounded-md text-xs bg-slate-dark/60 text-silver hover:text-pearl border border-slate-light/20"
+                onClick={fundSuggested}
+                disabled={funding}
+                className="btn-secondary flex items-center gap-2 min-h-[44px]"
               >
-                {formatMoney(preset)}
+                {funding ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Wallet className="w-4 h-4" />
+                )}
+                Fund & track
               </button>
+            )}
+          </div>
+
+          {suggestedResult && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h4 className="font-semibold text-pearl">
+                    {suggestedResult.profile?.name} plan · {country?.flag}{' '}
+                    {country?.name}
+                  </h4>
+                  <p className="text-xs text-steel">
+                    {formatMoney(cash)}
+                    {monthly > 0 ? ` · +${formatMoney(monthly)}/mo` : ''}
+                  </p>
+                </div>
+                <div className="text-right text-xs">
+                  <p className="text-emerald-bright font-mono">
+                    Est. {formatMoney(suggestedResult.summary?.expectedAnnualIncome)}
+                    /yr income
+                  </p>
+                  <p className="text-steel">
+                    Outlook {formatPct(suggestedResult.summary?.expectedTotalReturnPercent)}
+                  </p>
+                </div>
+              </div>
+              {country?.savingsNote && (
+                <p className="text-[11px] text-steel">
+                  Overnight sleeve: {overnight.name || country.savingsNote}
+                </p>
+              )}
+              <HoldingList rows={suggestedResult.allocationPlan} />
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ========== CUSTOM ========== */}
+      {tab === 'custom' && (
+        <>
+          <p className="text-sm text-silver mb-4">
+            Define your own split: overnight account (e.g. Tagesgeld) and/or stocks &amp; ETFs, each with a percentage. Monthly extras use the same mix.
+          </p>
+          {sharedControls}
+
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-pearl">Your allocation</h3>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => patchPlans({ customSleeves: normalizeCustom() })}
+                className="btn-secondary text-xs px-2.5 py-1.5"
+              >
+                Normalize to 100%
+              </button>
+              <span
+                className={`text-xs font-mono self-center ${
+                  Math.abs(customTotal - 100) < 0.6
+                    ? 'text-emerald-bright'
+                    : 'text-amber-bright'
+                }`}
+              >
+                {customTotal.toFixed(0)}%
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-3">
+            {(plans.customSleeves || []).map((sleeve) => (
+              <div
+                key={sleeve.id}
+                className="rounded-xl border border-slate-light/20 bg-slate-dark/30 p-3 space-y-2"
+              >
+                <div className="flex flex-wrap gap-2 items-center">
+                  <div className="flex gap-1 p-0.5 rounded-lg bg-slate-dark border border-slate-light/20">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateSleeve(sleeve.id, {
+                          kind: 'overnight',
+                          symbol: overnight.symbol,
+                          name: overnight.name,
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-md text-xs ${
+                        sleeve.kind === 'overnight'
+                          ? 'bg-cyan-500/20 text-cyan-300'
+                          : 'text-steel'
+                      }`}
+                    >
+                      Overnight
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateSleeve(sleeve.id, {
+                          kind: 'ticker',
+                          symbol: sleeve.kind === 'ticker' ? sleeve.symbol : '',
+                          name: sleeve.kind === 'ticker' ? sleeve.name : '',
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-md text-xs ${
+                        sleeve.kind === 'ticker'
+                          ? 'bg-emerald-500/20 text-emerald-bright'
+                          : 'text-steel'
+                      }`}
+                    >
+                      Stock / ETF
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1 ml-auto">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={sleeve.percent}
+                      onChange={(e) =>
+                        updateSleeve(sleeve.id, {
+                          percent: Number(e.target.value) || 0,
+                        })
+                      }
+                      className="glass-input w-20 text-center font-mono text-sm"
+                    />
+                    <span className="text-xs text-steel">%</span>
+                    <button
+                      type="button"
+                      onClick={() => removeSleeve(sleeve.id)}
+                      className="p-2 text-steel hover:text-ruby-bright"
+                      disabled={(plans.customSleeves || []).length <= 1}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {sleeve.kind === 'overnight' ? (
+                  <div className="rounded-lg bg-cyan-500/10 border border-cyan-500/20 px-3 py-2">
+                    <p className="text-sm text-pearl font-medium">
+                      {overnight.name || 'Overnight / savings'}
+                    </p>
+                    <p className="text-[11px] text-steel">
+                      {country?.savingsNote ||
+                        'Local cash / overnight deposit for your country'}
+                    </p>
+                    <p className="text-xs font-mono text-cyan-300 mt-1">
+                      {formatMoney((cash * (Number(sleeve.percent) || 0)) / 100)}
+                      {monthly > 0 &&
+                        ` · +${formatMoney((monthly * (Number(sleeve.percent) || 0)) / 100)}/mo`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <div className="flex gap-2">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+                        <input
+                          className="glass-input w-full pl-9"
+                          placeholder="Search ticker e.g. VUAA.DE, AAPL"
+                          value={
+                            searchFor === sleeve.id
+                              ? searchQ
+                              : sleeve.symbol
+                                ? `${sleeve.symbol}${sleeve.name ? ` — ${sleeve.name}` : ''}`
+                                : ''
+                          }
+                          onFocus={() => {
+                            setSearchFor(sleeve.id);
+                            setSearchQ(sleeve.symbol || '');
+                            setSearchHits([]);
+                          }}
+                          onChange={(e) => {
+                            setSearchFor(sleeve.id);
+                            runSearch(e.target.value);
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {searchFor === sleeve.id && (searchHits.length > 0 || searchBusy) && (
+                      <div className="absolute z-20 left-0 right-0 mt-1 rounded-xl border border-slate-light/20 bg-slate-dark shadow-xl max-h-48 overflow-y-auto">
+                        {searchBusy && (
+                          <p className="px-3 py-2 text-xs text-steel">Searching…</p>
+                        )}
+                        {searchHits.map((hit) => (
+                          <button
+                            key={hit.symbol}
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-slate-light/10 border-b border-slate-light/10 last:border-0"
+                            onClick={() => {
+                              updateSleeve(sleeve.id, {
+                                symbol: hit.symbol,
+                                name: hit.name || hit.symbol,
+                              });
+                              setSearchFor(null);
+                              setSearchHits([]);
+                              setSearchQ('');
+                            }}
+                          >
+                            <span className="font-semibold text-pearl text-sm">
+                              {hit.symbol}
+                            </span>
+                            <span className="text-xs text-steel ml-2">{hit.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-xs font-mono text-silver mt-1">
+                      {formatMoney((cash * (Number(sleeve.percent) || 0)) / 100)}
+                      {monthly > 0 &&
+                        ` · +${formatMoney((monthly * (Number(sleeve.percent) || 0)) / 100)}/mo`}
+                    </p>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            <button
+              type="button"
+              onClick={() => addSleeve('overnight')}
+              className="btn-secondary text-xs px-3 py-2 flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> Overnight
+            </button>
+            <button
+              type="button"
+              onClick={() => addSleeve('ticker')}
+              className="btn-secondary text-xs px-3 py-2 flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" /> Stock / ETF
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={runProjection}
-            disabled={isProjecting || isLoadingProfiles}
-            className="btn-primary w-full flex items-center justify-center gap-2 mt-2"
+            onClick={fundCustom}
+            disabled={funding}
+            className="btn-primary flex items-center gap-2 min-h-[44px]"
           >
-            {isProjecting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Calculating…
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Project my wealth
-              </>
-            )}
-          </button>
-          {error && <p className="text-sm text-ruby-bright">{error}</p>}
-        </div>
-
-        <div className="lg:col-span-2">
-          <p className="text-xs uppercase tracking-wide text-steel mb-2">Risk profile</p>
-          {isLoadingProfiles ? (
-            <div className="flex items-center gap-2 text-silver py-8 justify-center">
+            {funding ? (
               <Loader2 className="w-4 h-4 animate-spin" />
-              Loading profiles…
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {profiles.map((p) => {
-                const Icon = PROFILE_ICONS[p.id] || Landmark;
-                const active = profileId === p.id;
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setProfileId(p.id)}
-                    className={`text-left rounded-xl border p-3 transition-all ${
-                      active
-                        ? PROFILE_COLORS[p.id]
-                        : 'border-slate-light/20 bg-slate-dark/40 text-silver hover:border-slate-light/40'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <Icon className="w-4 h-4" />
-                      <div className="flex gap-0.5">{riskDots(p.riskLevel)}</div>
-                    </div>
-                    <p className="font-semibold text-pearl text-sm">{p.name}</p>
-                    <p className="text-[11px] text-steel mt-1 leading-snug">{p.tagline}</p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {result && (
-        <>
-          {/* Plain-language summary */}
-          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 mb-5">
-            <p className="text-sm text-pearl leading-relaxed">{result.summary.plainLanguage}</p>
-            <p className="text-[11px] text-steel mt-2">{result.disclaimer}</p>
-          </div>
-
-          {/* Key numbers */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-5">
-            <div className="rounded-xl bg-slate-dark/50 border border-slate-light/20 p-3">
-              <p className="text-[11px] text-steel uppercase">Yearly cash income</p>
-              <p className="text-xl font-bold text-emerald-bright mt-1">
-                {formatMoney(result.summary.expectedAnnualIncome)}
-              </p>
-              <p className="text-xs text-silver mb-2">
-                {result.summary.expectedIncomePercent}% of capital (cash paid out)
-              </p>
-              <div className="space-y-1.5 pt-2 border-t border-slate-light/15">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-steel">Dividends</span>
-                  <span className="text-pearl font-mono">
-                    {formatMoney(result.summary.dividendIncome)}
-                    <span className="text-steel ml-1">
-                      ({result.summary.dividendIncomePercent ?? 0}%)
-                    </span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-steel">Interest (savings)</span>
-                  <span className="text-pearl font-mono">
-                    {formatMoney(result.summary.interestIncome)}
-                    <span className="text-steel ml-1">
-                      ({result.summary.interestIncomePercent ?? 0}%)
-                    </span>
-                  </span>
-                </div>
-                <div className="flex h-1.5 rounded-full overflow-hidden mt-1 border border-slate-light/20">
-                  {(() => {
-                    const div = result.summary.dividendIncome || 0;
-                    const int = result.summary.interestIncome || 0;
-                    const total = div + int || 1;
-                    return (
-                      <>
-                        <div
-                          className="bg-emerald-bright"
-                          style={{ width: `${(div / total) * 100}%` }}
-                          title="Dividends"
-                        />
-                        <div
-                          className="bg-sapphire-bright"
-                          style={{ width: `${(int / total) * 100}%` }}
-                          title="Interest"
-                        />
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className="rounded-xl bg-slate-dark/50 border border-slate-light/20 p-3">
-              <p className="text-[11px] text-steel uppercase">Expected total return</p>
-              <p className="text-xl font-bold text-sapphire-bright mt-1">
-                {formatPct(result.summary.expectedTotalReturnPercent)}
-              </p>
-              <p className="text-xs text-silver mb-2">
-                ~{formatMoney(result.summary.expectedAnnualGrowthDollars)} / year combined
-              </p>
-              <div className="space-y-1.5 pt-2 border-t border-slate-light/15">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-steel">Cash income</span>
-                  <span className="text-emerald-bright font-mono">
-                    {formatMoney(result.summary.expectedAnnualIncome)}
-                    <span className="text-steel ml-1">
-                      ({result.summary.expectedIncomePercent}%)
-                    </span>
-                  </span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-steel">Price appreciation</span>
-                  <span className="text-amber-bright font-mono">
-                    {formatMoney(result.summary.appreciationDollars)}
-                    <span className="text-steel ml-1">
-                      ({result.summary.appreciationPercent ?? 0}%)
-                    </span>
-                  </span>
-                </div>
-                <div className="flex h-1.5 rounded-full overflow-hidden mt-1 border border-slate-light/20">
-                  {(() => {
-                    const income = result.summary.expectedIncomePercent || 0;
-                    const appr = result.summary.appreciationPercent || 0;
-                    const total = income + appr || 1;
-                    return (
-                      <>
-                        <div
-                          className="bg-emerald-bright"
-                          style={{ width: `${(income / total) * 100}%` }}
-                          title="Income"
-                        />
-                        <div
-                          className="bg-amber-bright"
-                          style={{ width: `${(appr / total) * 100}%` }}
-                          title="Appreciation"
-                        />
-                      </>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className="rounded-xl bg-slate-dark/50 border border-slate-light/20 p-3">
-              <p className="text-[11px] text-steel uppercase">10y backtest CAGR</p>
-              <p className="text-xl font-bold text-amber-bright mt-1">
-                {formatPct(result.backtest?.cagr)}
-              </p>
-              <p className="text-xs text-silver">
-                Max dip {result.backtest?.maxDrawdownPercent ?? '—'}%
-              </p>
-            </div>
-            <div className="rounded-xl bg-slate-dark/50 border border-slate-light/20 p-3">
-              <p className="text-[11px] text-steel uppercase">5-year outlook</p>
-              <p className="text-xl font-bold text-violet-bright mt-1">
-                {formatMoney(result.summary.projectedValue5Y)}
-              </p>
-              <p className="text-xs text-silver mb-2">Base case (history-like)</p>
-              {result.worstCase && (
-                <div className="pt-2 border-t border-slate-light/15 space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-steel">Worst case 5Y</span>
-                    <span className="text-ruby-bright font-mono font-semibold">
-                      {formatMoney(result.worstCase.projectedValue5Y)}
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-steel">
-                    At {formatPct(result.worstCase.annualReturnPercent)} / year
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Base vs Worst case */}
-          {result.worstCase && (
-            <div className="rounded-xl border border-ruby/25 bg-ruby/5 p-4 mb-5">
-              <div className="flex items-start gap-2 mb-3">
-                <AlertTriangle className="w-4 h-4 text-ruby-bright mt-0.5 flex-shrink-0" />
-                <div>
-                  <p className="text-sm font-semibold text-pearl">
-                    Worst case — {result.profile.name}
-                  </p>
-                  <p className="text-xs text-steel mt-0.5">
-                    {result.worstCase.description}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                <div className="rounded-lg bg-slate-dark/40 border border-slate-light/15 p-3">
-                  <p className="text-[11px] uppercase text-steel mb-2">Base case</p>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-steel">Total return</span>
-                      <span className="text-sapphire-bright font-mono">
-                        {formatPct(result.summary.expectedTotalReturnPercent)} ·{' '}
-                        {formatMoney(result.summary.expectedAnnualGrowthDollars)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-steel">Cash income</span>
-                      <span className="text-emerald-bright font-mono">
-                        {formatMoney(result.summary.expectedAnnualIncome)} (
-                        {result.summary.expectedIncomePercent}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-steel">Appreciation</span>
-                      <span className="text-amber-bright font-mono">
-                        {formatMoney(result.summary.appreciationDollars)} (
-                        {result.summary.appreciationPercent}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-steel">5Y value</span>
-                      <span className="text-pearl font-mono">
-                        {formatMoney(result.summary.projectedValue5Y)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg bg-slate-dark/40 border border-ruby/20 p-3">
-                  <p className="text-[11px] uppercase text-ruby-bright mb-2">Worst case</p>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between">
-                      <span className="text-steel">Total return</span>
-                      <span className="text-ruby-bright font-mono">
-                        {formatPct(result.worstCase.annualReturnPercent)} ·{' '}
-                        {formatMoney(result.worstCase.annualReturnDollars)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-steel">Cash income (stressed)</span>
-                      <span className="text-pearl font-mono">
-                        {formatMoney(result.worstCase.annualIncome)} (
-                        {result.worstCase.annualIncomePercent}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between pl-2 text-[11px]">
-                      <span className="text-steel">↳ Dividends</span>
-                      <span className="text-silver font-mono">
-                        {formatMoney(result.worstCase.dividendIncome)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between pl-2 text-[11px]">
-                      <span className="text-steel">↳ Interest</span>
-                      <span className="text-silver font-mono">
-                        {formatMoney(result.worstCase.interestIncome)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-steel">Appreciation</span>
-                      <span className="text-ruby-bright font-mono">
-                        {formatMoney(result.worstCase.appreciationDollars)} (
-                        {result.worstCase.appreciationPercent}%)
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-steel">5Y value</span>
-                      <span className="text-pearl font-mono">
-                        {formatMoney(result.worstCase.projectedValue5Y)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-                <div className="rounded-lg bg-obsidian/40 px-2.5 py-2 border border-slate-light/10">
-                  <p className="text-steel text-[10px] uppercase">Max drawdown</p>
-                  <p className="text-ruby-bright font-semibold font-mono mt-0.5">
-                    {result.worstCase.maxDrawdownPercent != null
-                      ? `-${result.worstCase.maxDrawdownPercent}%`
-                      : '—'}
-                  </p>
-                  <p className="text-[10px] text-steel mt-0.5">
-                    Peak → trough in backtest
-                  </p>
-                </div>
-                <div className="rounded-lg bg-obsidian/40 px-2.5 py-2 border border-slate-light/10">
-                  <p className="text-steel text-[10px] uppercase">After that dip</p>
-                  <p className="text-pearl font-semibold font-mono mt-0.5">
-                    {formatMoney(result.worstCase.crashPortfolioValue)}
-                  </p>
-                  <p className="text-[10px] text-steel mt-0.5">
-                    On {formatMoney(result.capital)} today
-                  </p>
-                </div>
-                <div className="rounded-lg bg-obsidian/40 px-2.5 py-2 border border-slate-light/10">
-                  <p className="text-steel text-[10px] uppercase">Worst 1-year</p>
-                  <p className="text-ruby-bright font-semibold font-mono mt-0.5">
-                    {formatPct(result.worstCase.worstRolling1YPercent)}
-                  </p>
-                  <p className="text-[10px] text-steel mt-0.5">Rolling 12 months</p>
-                </div>
-                <div className="rounded-lg bg-obsidian/40 px-2.5 py-2 border border-slate-light/10">
-                  <p className="text-steel text-[10px] uppercase">Worst 5-year CAGR</p>
-                  <p className="text-ruby-bright font-semibold font-mono mt-0.5">
-                    {formatPct(result.worstCase.worstRolling5YCagrPercent)}
-                  </p>
-                  <p className="text-[10px] text-steel mt-0.5">From history</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Mix bars */}
-          <div className="mb-5">
-            <p className="text-xs uppercase tracking-wide text-steel mb-2">
-              Portfolio mix — {result.profile.name}
-            </p>
-            <div className="flex h-3 rounded-full overflow-hidden border border-slate-light/20 mb-2">
-              <div
-                className="bg-violet-500"
-                style={{ width: `${result.profile.allocations.stocks}%` }}
-                title="Stocks"
-              />
-              <div
-                className="bg-sapphire"
-                style={{ width: `${result.profile.allocations.etfs}%` }}
-                title="ETFs"
-              />
-              <div
-                className="bg-emerald-glow"
-                style={{ width: `${result.profile.allocations.savings}%` }}
-                title="Savings"
-              />
-            </div>
-            <div className="flex flex-wrap gap-4 text-xs text-silver">
-              <span>
-                <span className="inline-block w-2 h-2 rounded-full bg-violet-500 mr-1" />
-                Stocks {result.profile.allocations.stocks}%
-              </span>
-              <span>
-                <span className="inline-block w-2 h-2 rounded-full bg-sapphire mr-1" />
-                ETFs {result.profile.allocations.etfs}%
-              </span>
-              <span>
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-glow mr-1" />
-                Savings {result.profile.allocations.savings}%
-              </span>
-            </div>
-          </div>
-
-          {/* Country access summary */}
-          {result.country && (
-            <div className="rounded-xl border border-sapphire/20 bg-sapphire/5 p-3 mb-5">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="text-sm font-semibold text-pearl">
-                    {result.country.flag} Buying from {result.country.name}
-                  </p>
-                  <p className="text-xs text-steel mt-1 max-w-2xl">
-                    {result.accessSummary?.hint}
-                  </p>
-                  {result.accessSummary?.savingsNote && (
-                    <p className="text-[11px] text-silver mt-1">
-                      Cash sleeve: {result.accessSummary.savingsNote}
-                    </p>
-                  )}
-                </div>
-                <div className="flex gap-2 text-[11px]">
-                  {(result.accessSummary?.unavailableCount || 0) > 0 && (
-                    <span className="px-2 py-1 rounded bg-ruby/15 text-ruby-bright">
-                      {result.accessSummary.unavailableCount} unavailable
-                    </span>
-                  )}
-                  {(result.accessSummary?.limitedCount || 0) > 0 && (
-                    <span className="px-2 py-1 rounded bg-amber/15 text-amber-bright">
-                      {result.accessSummary.limitedCount} limited
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Allocation — cards on mobile, table on desktop */}
-          <div className="mb-5">
-            <p className="text-xs uppercase tracking-wide text-steel mb-2">
-              Suggested investments
-              {result.country?.name ? ` · ${result.country.name}` : ''}
-            </p>
-
-            <div className="md:hidden space-y-3">
-              {result.allocationPlan.map((row) => {
-                const usingAlt = Boolean(row.usingAlternate && row.access?.alternative);
-                const buySymbol = usingAlt
-                  ? row.displaySymbol || row.access.alternative.symbol
-                  : row.symbol;
-                const buyName = usingAlt
-                  ? row.displayName || row.access.alternative.name
-                  : row.name;
-                const price = usingAlt ? row.displayPrice : row.price;
-                const shares = usingAlt ? row.displayShares : row.shares;
-                const income = usingAlt
-                  ? row.displayAnnualIncome ?? row.expectedAnnualIncome
-                  : row.expectedAnnualIncome;
-                const yieldPct = usingAlt
-                  ? row.displayYieldPercent ?? row.expectedYieldPercent
-                  : row.expectedYieldPercent;
-                const showPrice =
-                  row.kind !== 'savings' && price != null && Number(price) > 0;
-                const brokers =
-                  row.access?.brokers?.length > 0
-                    ? row.access.brokers.map((b) => b.name).join(', ')
-                    : usingAlt
-                      ? 'Use local / UCITS listing'
-                      : 'Check your broker';
-
-                return (
-                  <div
-                    key={`m-${row.kind}-${row.symbol}`}
-                    className="rounded-xl border border-slate-light/20 bg-slate-dark/40 p-3"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-semibold text-pearl">{buySymbol}</span>
-                          {row.access && <AccessBadge status={row.access.status} />}
-                          <span className="text-[10px] text-steel">{row.percent}%</span>
-                        </div>
-                        <p className="text-[11px] text-steel truncate">{buyName}</p>
-                        {usingAlt && (
-                          <p className="text-[10px] text-amber-bright mt-0.5">
-                            Alternate for {row.originalSymbol || row.symbol}
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
-                        <p className="text-[10px] text-steel">{row.role}</p>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <p className="text-[10px] text-steel uppercase">Price</p>
-                        <p className="font-mono text-pearl">
-                          {!showPrice
-                            ? '—'
-                            : `$${Number(price).toLocaleString(undefined, {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}`}
-                        </p>
-                        {showPrice && shares != null && (
-                          <p className="text-[10px] text-steel">
-                            ~{Number(shares).toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}{' '}
-                            sh
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] text-steel uppercase">Est. income</p>
-                        <p className="font-mono text-emerald-bright">{formatMoney(income)}</p>
-                        <p className="text-[10px] text-steel">
-                          {yieldPct}% ·{' '}
-                          {row.incomeType === 'interest' ? 'interest' : 'dividend'}
-                        </p>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-silver mt-2 pt-2 border-t border-slate-light/10">
-                      <Landmark className="w-3 h-3 inline mr-1 text-steel" />
-                      {brokers}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead>
-                <tr className="text-left text-[11px] uppercase text-steel border-b border-slate-light/20">
-                  <th className="py-2 pr-2">Buy</th>
-                  <th className="py-2 pr-2">Role</th>
-                  <th className="py-2 pr-2 text-right">Price</th>
-                  <th className="py-2 pr-2 text-right">Amount</th>
-                  <th className="py-2 pr-2 text-right">Mix</th>
-                  <th className="py-2 pr-2 text-right">Est. income</th>
-                  <th className="py-2">Brokers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.allocationPlan.map((row) => {
-                  const usingAlt = Boolean(row.usingAlternate && row.access?.alternative);
-                  const buySymbol = usingAlt
-                    ? row.displaySymbol || row.access.alternative.symbol
-                    : row.symbol;
-                  const buyName = usingAlt
-                    ? row.displayName || row.access.alternative.name
-                    : row.name;
-                  const price = usingAlt ? row.displayPrice : row.price;
-                  const shares = usingAlt ? row.displayShares : row.shares;
-                  const income = usingAlt
-                    ? row.displayAnnualIncome ?? row.expectedAnnualIncome
-                    : row.expectedAnnualIncome;
-                  const yieldPct = usingAlt
-                    ? row.displayYieldPercent ?? row.expectedYieldPercent
-                    : row.expectedYieldPercent;
-                  const showPrice =
-                    row.kind !== 'savings' && price != null && Number(price) > 0;
-
-                  return (
-                    <tr
-                      key={`${row.kind}-${row.symbol}`}
-                      className="border-b border-slate-light/10 align-top"
-                    >
-                      <td className="py-2.5 pr-2">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="font-semibold text-pearl">{buySymbol}</span>
-                          {row.access && <AccessBadge status={row.access.status} />}
-                        </div>
-                        <div className="text-[11px] text-steel truncate max-w-[200px]">
-                          {buyName}
-                        </div>
-                        {usingAlt && (
-                          <div className="text-[10px] text-amber-bright mt-0.5">
-                            Alternate for {row.originalSymbol || row.symbol}
-                            {row.access.alternative.reason
-                              ? ` · ${row.access.alternative.reason}`
-                              : ''}
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2.5 pr-2 text-silver text-xs">{row.role}</td>
-                      <td className="py-2.5 pr-2 text-right font-mono text-pearl">
-                        {!showPrice ? (
-                          <span className="text-steel">—</span>
-                        ) : (
-                          <>
-                            ${Number(price).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                            {shares != null && (
-                              <span className="block text-[10px] text-steel">
-                                ~{Number(shares).toLocaleString(undefined, {
-                                  maximumFractionDigits: 2,
-                                })}{' '}
-                                sh
-                              </span>
-                            )}
-                          </>
-                        )}
-                      </td>
-                      <td className="py-2.5 pr-2 text-right font-mono text-pearl">
-                        {formatMoney(row.amount)}
-                      </td>
-                      <td className="py-2.5 pr-2 text-right text-silver">{row.percent}%</td>
-                      <td className="py-2.5 pr-2 text-right text-emerald-bright font-mono">
-                        {formatMoney(income)}
-                        <span className="block text-[10px] text-steel">
-                          {yieldPct}% ·{' '}
-                          {row.incomeType === 'interest' ? 'interest' : 'dividend'}
-                        </span>
-                      </td>
-                      <td className="py-2.5 text-xs text-silver max-w-[160px]">
-                        {row.access?.brokers?.length > 0
-                          ? row.access.brokers.map((b) => b.name).join(', ')
-                          : usingAlt
-                            ? 'Use local / UCITS listing'
-                            : 'Check your broker'}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-          </div>
-
-          {/* Chart */}
-          <div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
-              <p className="text-xs uppercase tracking-wide text-steel">
-                Backtest (~{result.backtest?.years || 10}y) + 5y prospects
-              </p>
-              <div className="flex flex-wrap gap-3 text-[11px] text-steel">
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-0.5 bg-emerald-bright inline-block" /> Historical
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-0.5 bg-amber-bright inline-block" /> Base projected
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="w-3 h-0.5 bg-ruby-bright inline-block" /> Worst projected
-                </span>
-              </div>
-            </div>
-            <div className="h-64 w-full">
-              {chartData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <ComposedChart data={chartData}>
-                    <defs>
-                      <linearGradient id="projFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10b981" stopOpacity={0.25} />
-                        <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
-                    <XAxis
-                      dataKey="label"
-                      tick={{ fill: '#64748b', fontSize: 10 }}
-                      minTickGap={40}
-                    />
-                    <YAxis
-                      tick={{ fill: '#64748b', fontSize: 10 }}
-                      tickFormatter={(v) =>
-                        v >= 1000 ? `$${(v / 1000).toFixed(0)}k` : `$${v}`
-                      }
-                      width={48}
-                    />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="none"
-                      fill="url(#projFill)"
-                      isAnimationActive={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#34d399"
-                      strokeWidth={2}
-                      dot={false}
-                      name="Base"
-                      connectNulls
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="worstValue"
-                      stroke="#f87171"
-                      strokeWidth={2}
-                      strokeDasharray="4 4"
-                      dot={false}
-                      name="Worst"
-                      connectNulls
-                    />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="h-full flex items-center justify-center text-steel text-sm">
-                  Not enough history to chart this mix
-                </div>
-              )}
-            </div>
-            {result.backtest?.endValue != null && (
-              <p className="text-xs text-silver mt-2">
-                If you had invested {formatMoney(result.capital)} in this mix{' '}
-                {result.backtest.years} years ago, it would be worth about{' '}
-                <span className="text-pearl font-semibold">
-                  {formatMoney(result.backtest.endValue)}
-                </span>{' '}
-                today ({formatPct(result.backtest.totalReturnPercent)} total).
-              </p>
+            ) : (
+              <Wallet className="w-4 h-4" />
             )}
-          </div>
+            Fund custom plan & track
+          </button>
         </>
+      )}
+
+      {/* ========== DASHBOARD ========== */}
+      {tab === 'dashboard' && (
+        <div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div>
+              <h3 className="text-sm font-semibold text-pearl flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-emerald-bright" />
+                Performance
+              </h3>
+              <p className="text-xs text-steel">
+                Ranked by return · monthly extra {formatMoney(monthly)} into latest plan
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={applyMonthly}
+                disabled={!monthly || !plans.funded?.length}
+                className="btn-primary text-xs px-3 py-2"
+              >
+                Invest this month
+              </button>
+              <button
+                type="button"
+                onClick={refreshDashboard}
+                disabled={dashBusy}
+                className="btn-secondary text-xs px-3 py-2"
+              >
+                {dashBusy ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  'Refresh'
+                )}
+              </button>
+            </div>
+          </div>
+
+          {!plans.funded?.length && (
+            <div className="rounded-xl border border-slate-light/20 p-8 text-center">
+              <p className="text-sm text-steel mb-3">No funded plans yet.</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTab('suggested')}
+                  className="btn-primary text-xs px-3 py-2"
+                >
+                  Build country plan
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTab('custom')}
+                  className="btn-secondary text-xs px-3 py-2"
+                >
+                  Build custom
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {dashRows.map((row, idx) => (
+              <div
+                key={`${row.id}-${row.fundedAt}`}
+                className="rounded-xl border border-slate-light/20 bg-slate-dark/30 p-3 sm:p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-light/20 text-steel">
+                        #{idx + 1}
+                      </span>
+                      <h4 className="font-semibold text-pearl">{row.name}</h4>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-sapphire/15 text-sapphire-bright capitalize">
+                        {row.source || 'plan'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-steel mt-0.5">
+                      {row.countryCode} · {row.fundedAt?.slice(0, 10)}
+                      {row.monthlyShare > 0 &&
+                        ` · ${formatMoney(row.monthlyShare)}/mo plan`}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-mono text-pearl">
+                      {formatMoney(row.currentValue)}
+                    </p>
+                    <p
+                      className={`text-sm font-mono ${
+                        row.pnl >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'
+                      }`}
+                    >
+                      {formatPct(row.pnlPct)} ({row.pnl >= 0 ? '+' : ''}
+                      {formatMoney(row.pnl)})
+                    </p>
+                  </div>
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-dark overflow-hidden border border-slate-light/20 mb-3">
+                  <div
+                    className={`h-full ${
+                      row.pnlPct >= 0 ? 'bg-emerald-bright' : 'bg-ruby-bright'
+                    }`}
+                    style={{
+                      width: `${Math.min(100, Math.max(4, Math.abs(row.pnlPct) * 4))}%`,
+                    }}
+                  />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                  {(row.holdingValues || row.holdings || []).slice(0, 4).map((h) => (
+                    <div key={`${h.symbol}-${h.kind}`}>
+                      <p className="text-steel truncate">{h.symbol}</p>
+                      <p className="font-mono text-silver">
+                        {formatMoney(h.currentValue ?? h.amount)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
