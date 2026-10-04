@@ -543,7 +543,7 @@ function App() {
   };
 
   /** Deduct across banks (prefer accountId, then largest balances). */
-  const debitCashAccounts = (accounts, amount, accountId) => {
+  const debitCashAccounts = (accounts, amount, accountId, { exclusive = false } = {}) => {
     const list = accounts.map((a) => ({ ...a }));
     let remaining = amount;
     const touched = [];
@@ -555,6 +555,9 @@ function App() {
         list[idx].balance = (list[idx].balance || 0) - take;
         remaining -= take;
         if (take > 0) touched.push({ accountId: list[idx].id, amount: take });
+      }
+      if (exclusive) {
+        return { accounts: list, remaining, touched };
       }
     }
 
@@ -594,14 +597,16 @@ function App() {
       persistCashState(nextAccounts, [newCashTransaction, ...cashTransactions]);
     }
     
-    // If it's a buy transaction, deduct from cash if available
-    if (transaction.type === 'buy') {
+    // If it's a buy transaction, deduct from selected bank (unless skipped)
+    if (transaction.type === 'buy' && transaction.deductCash !== false && transaction.cashAccountId) {
       const purchaseCost = transaction.shares * transaction.price;
-      if (cashBalance >= purchaseCost) {
-        const { accounts: nextAccounts, touched } = debitCashAccounts(
-          cashAccounts,
-          purchaseCost
-        );
+      const { accounts: nextAccounts, remaining, touched } = debitCashAccounts(
+        cashAccounts,
+        purchaseCost,
+        transaction.cashAccountId,
+        { exclusive: true }
+      );
+      if (remaining <= 0.0001 && touched.length) {
         const newCashTransactions = touched.map((t, i) => ({
           id: `${Date.now()}_${i}`,
           type: 'buy',
@@ -818,29 +823,32 @@ function App() {
     );
   };
 
-  // Update handleAddStock to deduct from cash if available
+  // Deduct from selected bank when adding a stock (unless skipped for historical buys)
   const handleAddStockWithCash = async (newStock) => {
-    const investedAmount = newStock.investedAmount || (newStock.shares * newStock.purchasePrice);
-    
-    // Deduct from cash if we have enough
-    if (cashBalance >= investedAmount) {
-      const { accounts: nextAccounts, touched } = debitCashAccounts(
+    const investedAmount =
+      newStock.investedAmount || newStock.shares * (newStock.purchasePriceUSD ?? newStock.purchasePrice);
+
+    if (newStock.deductCash !== false && newStock.cashAccountId) {
+      const { accounts: nextAccounts, remaining, touched } = debitCashAccounts(
         cashAccounts,
-        investedAmount
+        investedAmount,
+        newStock.cashAccountId,
+        { exclusive: true }
       );
-      const newTransactions = touched.map((t, i) => ({
-        id: `${Date.now()}_${i}`,
-        type: 'buy',
-        amount: t.amount,
-        note: `Bought ${newStock.symbol}`,
-        symbol: newStock.symbol,
-        accountId: t.accountId,
-        date: new Date().toISOString(),
-      }));
-      persistCashState(nextAccounts, [...newTransactions, ...cashTransactions]);
+      if (remaining <= 0.0001 && touched.length) {
+        const newTransactions = touched.map((t, i) => ({
+          id: `${Date.now()}_${i}`,
+          type: 'buy',
+          amount: t.amount,
+          note: `Bought ${newStock.symbol}`,
+          symbol: newStock.symbol,
+          accountId: t.accountId,
+          date: newStock.purchaseDate || new Date().toISOString(),
+        }));
+        persistCashState(nextAccounts, [...newTransactions, ...cashTransactions]);
+      }
     }
-    
-    // Continue with original add stock logic
+
     await handleAddStock(newStock);
   };
 
@@ -1033,6 +1041,7 @@ function App() {
           onAdd={handleAddStockWithCash}
           prefillStock={prefillStock}
           availableCash={cashBalance}
+          cashAccounts={cashAccounts}
         />
 
         <SettingsPanel
@@ -1048,6 +1057,7 @@ function App() {
           onClose={() => setSelectedStock(null)}
           onAddTransaction={handleAddTransaction}
           onDeleteTransaction={handleDeleteTransaction}
+          cashAccounts={cashAccounts}
         />
 
         <EditStockModal

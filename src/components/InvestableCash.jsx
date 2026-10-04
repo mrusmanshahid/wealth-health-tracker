@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Wallet,
   Plus,
@@ -160,109 +161,113 @@ export default function InvestableCash({
   );
   const recentTransactions = filteredTransactions.slice(0, 12);
 
-  const modal = showModal && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  const fundsModal = showModal ? (
+    <div className="fixed inset-0 z-50">
       <div
         className="absolute inset-0 bg-midnight/80 backdrop-blur-sm"
         onClick={() => setShowModal(false)}
       />
-      <div className="relative glass-card w-full max-w-md p-6">
-        <h3 className="text-xl font-bold text-pearl mb-4 flex items-center gap-2">
-          <Wallet className="w-5 h-5 text-cyan-400" />
-          {isDeposit ? 'Add funds' : 'Withdraw funds'}
-        </h3>
-
-        <div className="flex gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setIsDeposit(true)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isDeposit
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : 'bg-slate-dark/50 text-steel'
-            }`}
-          >
-            <Plus className="w-4 h-4 inline mr-1" />
-            Deposit
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsDeposit(false)}
-            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
-              !isDeposit
-                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                : 'bg-slate-dark/50 text-steel'
-            }`}
-          >
-            <Minus className="w-4 h-4 inline mr-1" />
-            Withdraw
-          </button>
+      <div className="absolute inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 w-full sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] max-h-[min(90dvh,90vh)] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden border border-slate-light/20 bg-gradient-to-br from-slate-dark/95 to-midnight/95 shadow-2xl">
+        <div className="p-4 sm:p-5 border-b border-slate-light/10 flex-shrink-0">
+          <h3 className="text-lg font-bold text-pearl flex items-center gap-2">
+            <Wallet className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+            {isDeposit ? 'Add funds' : 'Withdraw funds'}
+          </h3>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label className="block text-sm text-steel mb-2">Bank account</label>
-            <select
-              value={selectedAccountId}
-              onChange={(e) => setSelectedAccountId(e.target.value)}
-              className="w-full bg-slate-dark/50 border border-slate-light/30 rounded-xl px-4 py-3 text-pearl focus:outline-none focus:border-cyan-500 appearance-none"
-            >
-              {cashAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} (${(a.balance || 0).toLocaleString()})
-                </option>
-              ))}
-            </select>
-          </div>
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 overflow-hidden">
+          <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsDeposit(true)}
+                className={`min-h-[40px] py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                  isDeposit
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-slate-dark/50 text-steel'
+                }`}
+              >
+                <Plus className="w-4 h-4 inline mr-1" />
+                Deposit
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDeposit(false)}
+                className={`min-h-[40px] py-2 rounded-lg text-xs sm:text-sm font-medium transition-colors ${
+                  !isDeposit
+                    ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                    : 'bg-slate-dark/50 text-steel'
+                }`}
+              >
+                <Minus className="w-4 h-4 inline mr-1" />
+                Withdraw
+              </button>
+            </div>
 
-          <div className="mb-4">
-            <label className="block text-sm text-steel mb-2">Amount</label>
-            <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+            <div>
+              <label className="block text-sm text-steel mb-2">Bank account</label>
+              <select
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+                className="glass-input w-full appearance-none"
+              >
+                {cashAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} (${(a.balance || 0).toLocaleString()})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm text-steel mb-2">Amount</label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-steel" />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={addAmount}
+                  onChange={(e) => setAddAmount(e.target.value)}
+                  className="glass-input w-full pl-10 font-mono text-lg"
+                  required
+                  autoFocus
+                />
+              </div>
+              {!isDeposit && (
+                <p className="text-xs text-steel mt-1 break-words">
+                  Available in {selectedAccount?.name || 'account'}: $
+                  {selectedBalance.toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm text-steel mb-2">Note (optional)</label>
               <input
-                type="number"
-                step="0.01"
-                placeholder="0.00"
-                value={addAmount}
-                onChange={(e) => setAddAmount(e.target.value)}
-                className="w-full bg-slate-dark/50 border border-slate-light/30 rounded-xl pl-10 pr-4 py-3 text-pearl text-lg font-mono focus:outline-none focus:border-cyan-500"
-                required
-                autoFocus
+                type="text"
+                placeholder="Salary, rent transfer…"
+                value={addNote}
+                onChange={(e) => setAddNote(e.target.value)}
+                className="glass-input w-full"
               />
             </div>
-            {!isDeposit && (
-              <p className="text-xs text-steel mt-1">
-                Available in {selectedAccount?.name || 'account'}: $
-                {selectedBalance.toLocaleString()}
-              </p>
-            )}
           </div>
 
-          <div className="mb-6">
-            <label className="block text-sm text-steel mb-2">Note (optional)</label>
-            <input
-              type="text"
-              placeholder="e.g., Salary, rent transfer..."
-              value={addNote}
-              onChange={(e) => setAddNote(e.target.value)}
-              className="w-full bg-slate-dark/50 border border-slate-light/30 rounded-xl px-4 py-3 text-pearl focus:outline-none focus:border-cyan-500"
-            />
-          </div>
-
-          <div className="flex gap-3">
+          <div className="p-4 sm:p-5 border-t border-slate-light/10 grid grid-cols-2 gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={() => setShowModal(false)}
-              className="flex-1 py-3 bg-slate-dark/50 text-steel rounded-xl font-medium hover:bg-slate-dark transition-colors"
+              className="min-h-[44px] py-3 bg-slate-dark/50 text-steel rounded-xl font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+              className={`min-h-[44px] py-3 rounded-xl font-medium ${
                 isDeposit
-                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
-                  : 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-400'
+                  ? 'bg-emerald-500/20 text-emerald-400'
+                  : 'bg-rose-500/20 text-rose-400'
               }`}
             >
               {isDeposit ? 'Add funds' : 'Withdraw'}
@@ -271,7 +276,56 @@ export default function InvestableCash({
         </form>
       </div>
     </div>
-  );
+  ) : null;
+
+  const addBankModal = showAddBank ? (
+    <div className="fixed inset-0 z-50">
+      <div
+        className="absolute inset-0 bg-midnight/80 backdrop-blur-sm"
+        onClick={() => setShowAddBank(false)}
+      />
+      <div className="absolute inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 w-full sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] p-4 sm:p-6 rounded-t-2xl sm:rounded-2xl border border-slate-light/20 bg-gradient-to-br from-slate-dark/95 to-midnight/95 shadow-2xl">
+        <h3 className="text-lg font-bold text-pearl mb-4 flex items-center gap-2">
+          <Landmark className="w-5 h-5 text-cyan-400 flex-shrink-0" />
+          Add bank account
+        </h3>
+        <form onSubmit={handleAddBank}>
+          <label className="block text-sm text-steel mb-2">Bank name</label>
+          <input
+            className="glass-input w-full mb-4"
+            placeholder="Chase, Revolut, Sparkasse…"
+            value={newBankName}
+            onChange={(e) => setNewBankName(e.target.value)}
+            autoFocus
+            required
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setShowAddBank(false)}
+              className="min-h-[44px] py-3 bg-slate-dark/50 text-steel rounded-xl"
+            >
+              Cancel
+            </button>
+            <button type="submit" className="min-h-[44px] btn-primary py-3 rounded-xl px-3">
+              Add bank
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  ) : null;
+
+  const portals =
+    typeof document !== 'undefined'
+      ? createPortal(
+          <>
+            {fundsModal}
+            {addBankModal}
+          </>,
+          document.body
+        )
+      : null;
 
   if (compact) {
     return (
@@ -308,75 +362,79 @@ export default function InvestableCash({
             </div>
           ))}
         </div>
-        {modal}
+        {portals}
       </div>
     );
   }
 
   return (
-    <div className="glass-card p-4 sm:p-6">
-      <div className="flex items-center justify-between gap-2 mb-4 sm:mb-6">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 flex-shrink-0">
-            <Wallet className="w-6 h-6 text-cyan-400" />
+    <div className="glass-card p-4 sm:p-6 overflow-hidden">
+      <div className="flex flex-col gap-3 mb-4 sm:mb-6">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="p-2.5 sm:p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 flex-shrink-0">
+            <Wallet className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="text-lg font-bold text-pearl">Investable Cash</h2>
-            <p className="text-xs text-steel">Segmented by bank · add & withdraw per account</p>
+            <p className="text-xs text-steel leading-snug">
+              Track each bank · add &amp; withdraw per account
+            </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => setShowAddBank(true)}
-            className="btn-secondary text-sm flex items-center gap-2 min-h-[40px]"
+            className="btn-secondary text-xs sm:text-sm flex items-center justify-center gap-1.5 min-h-[40px] px-2 sm:px-4"
           >
-            <Landmark className="w-4 h-4" />
-            Add bank
+            <Landmark className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">Add bank</span>
           </button>
           <button
             type="button"
             onClick={() => openModal(true)}
-            className="btn-primary text-sm flex items-center gap-2 min-h-[40px]"
+            className="btn-primary text-xs sm:text-sm flex items-center justify-center gap-1.5 min-h-[40px] px-2 sm:px-4"
           >
-            <Plus className="w-4 h-4" />
-            Add/Withdraw
+            <Plus className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">Add / Withdraw</span>
           </button>
         </div>
       </div>
 
-      <div className="bg-gradient-to-br from-cyan-900/30 to-emerald-900/30 rounded-2xl p-5 sm:p-6 border border-cyan-500/20 mb-5">
+      <div className="bg-gradient-to-br from-cyan-900/30 to-emerald-900/30 rounded-2xl p-4 sm:p-6 border border-cyan-500/20 mb-5 overflow-hidden">
         <p className="text-sm text-cyan-300/70 mb-1">Total across banks</p>
-        <p className="text-3xl sm:text-4xl font-bold text-white font-mono">
+        <p className="text-2xl sm:text-4xl font-bold text-white font-mono break-all">
           $
           {cashBalance.toLocaleString(undefined, {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}
         </p>
-        <div className="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-cyan-500/20">
-          <div>
-            <p className="text-xs text-steel">Banks</p>
-            <p className="text-lg font-semibold text-pearl font-mono">{cashAccounts.length}</p>
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 mt-4 pt-4 border-t border-cyan-500/20">
+          <div className="min-w-0">
+            <p className="text-[10px] sm:text-xs text-steel">Banks</p>
+            <p className="text-base sm:text-lg font-semibold text-pearl font-mono">
+              {cashAccounts.length}
+            </p>
           </div>
-          <div>
-            <p className="text-xs text-steel">Deposited</p>
-            <p className="text-lg font-semibold text-emerald-400 font-mono">
+          <div className="min-w-0">
+            <p className="text-[10px] sm:text-xs text-steel">Deposited</p>
+            <p className="text-sm sm:text-lg font-semibold text-emerald-400 font-mono truncate">
               $
               {cashTransactions
                 .filter((t) => t.type === 'deposit')
                 .reduce((sum, t) => sum + t.amount, 0)
-                .toLocaleString()}
+                .toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-steel">Withdrawn</p>
-            <p className="text-lg font-semibold text-rose-400 font-mono">
+          <div className="min-w-0">
+            <p className="text-[10px] sm:text-xs text-steel">Withdrawn</p>
+            <p className="text-sm sm:text-lg font-semibold text-rose-400 font-mono truncate">
               $
               {cashTransactions
                 .filter((t) => t.type === 'withdrawal')
                 .reduce((sum, t) => sum + t.amount, 0)
-                .toLocaleString()}
+                .toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </p>
           </div>
         </div>
@@ -385,88 +443,94 @@ export default function InvestableCash({
       {/* Bank accounts */}
       <div className="mb-5">
         <h3 className="text-sm font-semibold text-silver mb-3 flex items-center gap-2">
-          <Landmark className="w-4 h-4 text-cyan-400" />
+          <Landmark className="w-4 h-4 text-cyan-400 flex-shrink-0" />
           Bank accounts
         </h3>
         <div className="space-y-2">
           {cashAccounts.map((account) => (
             <div
               key={account.id}
-              className="rounded-xl border border-slate-light/20 bg-slate-dark/40 p-3 sm:p-4"
+              className="rounded-xl border border-slate-light/20 bg-slate-dark/40 p-3 sm:p-4 overflow-hidden"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  {editingId === account.id ? (
-                    <form
-                      className="flex gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (editName.trim() && onRenameAccount) {
-                          onRenameAccount(account.id, editName.trim());
-                        }
-                        setEditingId(null);
+              <div className="flex flex-col gap-3">
+                <div className="min-w-0 flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    {editingId === account.id ? (
+                      <form
+                        className="flex gap-2 min-w-0"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          if (editName.trim() && onRenameAccount) {
+                            onRenameAccount(account.id, editName.trim());
+                          }
+                          setEditingId(null);
+                        }}
+                      >
+                        <input
+                          className="glass-input flex-1 min-w-0 text-sm"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          autoFocus
+                        />
+                        <button type="submit" className="btn-primary text-xs px-3 flex-shrink-0">
+                          Save
+                        </button>
+                      </form>
+                    ) : (
+                      <>
+                        <p className="font-semibold text-pearl truncate">{account.name}</p>
+                        <p className="text-xl sm:text-2xl font-mono text-cyan-400 mt-1 break-all">
+                          $
+                          {(account.balance || 0).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(account.id);
+                        setEditName(account.name);
                       }}
+                      className="p-2 rounded-lg text-steel hover:text-pearl"
+                      title="Rename"
+                      aria-label="Rename"
                     >
-                      <input
-                        className="glass-input flex-1"
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        autoFocus
-                      />
-                      <button type="submit" className="btn-primary text-xs px-3">
-                        Save
-                      </button>
-                    </form>
-                  ) : (
-                    <>
-                      <p className="font-semibold text-pearl truncate">{account.name}</p>
-                      <p className="text-2xl font-mono text-cyan-400 mt-1">
-                        $
-                        {(account.balance || 0).toLocaleString(undefined, {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
-                      </p>
-                    </>
-                  )}
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveAccount?.(account.id)}
+                      className="p-2 rounded-lg text-steel hover:text-rose-400"
+                      title="Remove bank"
+                      aria-label="Remove bank"
+                      disabled={cashAccounts.length <= 1}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => openModal(true, account.id)}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25"
+                    className="min-h-[40px] px-3 py-2 rounded-lg text-xs font-medium bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 flex items-center justify-center gap-1.5"
                   >
-                    <Plus className="w-3.5 h-3.5 inline mr-1" />
+                    <Plus className="w-3.5 h-3.5" />
                     Add
                   </button>
                   <button
                     type="button"
                     onClick={() => openModal(false, account.id)}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-rose-500/15 text-rose-400 hover:bg-rose-500/25"
+                    className="min-h-[40px] px-3 py-2 rounded-lg text-xs font-medium bg-rose-500/15 text-rose-400 hover:bg-rose-500/25 flex items-center justify-center gap-1.5 disabled:opacity-40"
                     disabled={(account.balance || 0) <= 0}
                   >
-                    <Minus className="w-3.5 h-3.5 inline mr-1" />
+                    <Minus className="w-3.5 h-3.5" />
                     Withdraw
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(account.id);
-                      setEditName(account.name);
-                    }}
-                    className="p-1.5 rounded-lg text-steel hover:text-pearl"
-                    title="Rename"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onRemoveAccount?.(account.id)}
-                    className="p-1.5 rounded-lg text-steel hover:text-rose-400"
-                    title="Remove bank"
-                    disabled={cashAccounts.length <= 1}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -653,45 +717,7 @@ export default function InvestableCash({
         </div>
       )}
 
-      {showAddBank && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-midnight/80 backdrop-blur-sm"
-            onClick={() => setShowAddBank(false)}
-          />
-          <div className="relative glass-card w-full max-w-md p-6">
-            <h3 className="text-lg font-bold text-pearl mb-4 flex items-center gap-2">
-              <Landmark className="w-5 h-5 text-cyan-400" />
-              Add bank account
-            </h3>
-            <form onSubmit={handleAddBank}>
-              <label className="block text-sm text-steel mb-2">Bank name</label>
-              <input
-                className="glass-input w-full mb-4"
-                placeholder="e.g., Chase checking, Revolut, Sparkasse"
-                value={newBankName}
-                onChange={(e) => setNewBankName(e.target.value)}
-                autoFocus
-                required
-              />
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddBank(false)}
-                  className="flex-1 py-3 bg-slate-dark/50 text-steel rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="flex-1 btn-primary py-3 rounded-xl">
-                  Add bank
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {modal}
+      {portals}
     </div>
   );
 }

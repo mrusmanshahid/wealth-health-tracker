@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Search, Loader2, TrendingUp, TrendingDown, DollarSign, Calendar, Hash, PiggyBank, Wallet } from 'lucide-react';
 import { searchStocks, fetchStockQuote } from '../services/stockApi';
 import {
@@ -10,7 +11,16 @@ import {
   getExchangeRate,
 } from '../services/currencyApi';
 
-export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, availableCash = 0 }) {
+const NO_DEDUCT = 'none';
+
+export default function AddStockModal({
+  isOpen,
+  onClose,
+  onAdd,
+  prefillStock,
+  availableCash = 0,
+  cashAccounts = [],
+}) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedStock, setSelectedStock] = useState(null);
@@ -20,12 +30,26 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
   const [investedAmount, setInvestedAmount] = useState(''); // USD when amount mode
   const [purchaseDate, setPurchaseDate] = useState('');
   const [monthlyContribution, setMonthlyContribution] = useState('');
+  const [fundingSource, setFundingSource] = useState(NO_DEDUCT);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingQuote, setIsLoadingQuote] = useState(false);
   const [quoteCurrency, setQuoteCurrency] = useState('USD');
   const [currentPriceNative, setCurrentPriceNative] = useState(0);
   const [currentPriceUSD, setCurrentPriceUSD] = useState(0);
   const [error, setError] = useState('');
+
+  // Default funding source when modal opens / accounts change
+  useEffect(() => {
+    if (!isOpen) return;
+    if (!cashAccounts.length) {
+      setFundingSource(NO_DEDUCT);
+      return;
+    }
+    const richest = [...cashAccounts].sort(
+      (a, b) => (b.balance || 0) - (a.balance || 0)
+    )[0];
+    setFundingSource(richest?.id || NO_DEDUCT);
+  }, [isOpen, cashAccounts]);
 
   // Handle prefilled stock from watchlist or discovery
   useEffect(() => {
@@ -97,6 +121,9 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
   const gainLossPercent = investedUSD > 0 ? (gainLoss / investedUSD) * 100 : 0;
   const isPositive = gainLoss >= 0;
   const fx = describeFx(avgPriceNative || currentPriceNative, quoteCurrency);
+  const deductCash = fundingSource !== NO_DEDUCT;
+  const selectedFundingAccount = cashAccounts.find((a) => a.id === fundingSource);
+  const fundingBalance = selectedFundingAccount?.balance || 0;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -144,6 +171,13 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
       finalShares = investedAmountUSD / purchasePriceUSD;
     }
 
+    if (deductCash && investedAmountUSD > fundingBalance + 0.0001) {
+      setError(
+        `Not enough cash in ${selectedFundingAccount?.name || 'this bank'}. Choose another bank or "Don't deduct".`
+      );
+      return;
+    }
+
     onAdd({
       symbol: selectedStock.symbol,
       name: selectedStock.name,
@@ -158,6 +192,8 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
       purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
       monthlyContribution: parseFloat(monthlyContribution) || 0,
       addedAt: new Date().toISOString(),
+      deductCash,
+      cashAccountId: deductCash ? fundingSource : null,
     });
 
     // Reset form
@@ -186,35 +222,37 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
+  const modal = (
+    <div className="fixed inset-0 z-50">
+      <div
         className="absolute inset-0 bg-midnight/80 backdrop-blur-sm"
         onClick={handleClose}
       />
-      
-      {/* Modal */}
-      <div className="relative glass-card w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-        <button
-          onClick={handleClose}
-          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-slate-light/50 transition-colors"
-        >
-          <X className="w-5 h-5 text-steel" />
-        </button>
 
-        <h2 className="text-xl font-bold text-pearl mb-6 flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-emerald-glow/20">
-            <TrendingUp className="w-5 h-5 text-emerald-bright" />
-          </div>
-          Add Stock to Portfolio
-        </h2>
+      <div className="absolute inset-x-0 bottom-0 sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 w-full sm:w-[32rem] sm:max-w-[calc(100vw-2rem)] max-h-[min(92dvh,92vh)] flex flex-col rounded-t-2xl sm:rounded-2xl overflow-hidden border border-slate-light/20 bg-gradient-to-br from-slate-dark/95 to-midnight/95 shadow-2xl">
+        <div className="flex items-center justify-between gap-3 p-4 sm:p-5 border-b border-slate-light/10 flex-shrink-0">
+          <h2 className="text-base sm:text-xl font-bold text-pearl flex items-center gap-2 min-w-0">
+            <div className="p-2 rounded-lg bg-emerald-glow/20 flex-shrink-0">
+              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-bright" />
+            </div>
+            <span className="truncate">Add Stock</span>
+          </h2>
+          <button
+            type="button"
+            onClick={handleClose}
+            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors flex-shrink-0"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5 text-steel" />
+          </button>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1 overflow-hidden">
+          <div className="p-4 sm:p-5 space-y-4 overflow-y-auto flex-1 min-h-0 overscroll-contain">
           {/* Stock Search */}
           <div className="relative">
             <label className="block text-sm font-medium text-silver mb-2">
-              Search Stock
+              Search stock
             </label>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-steel" />
@@ -222,8 +260,8 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by symbol or name (e.g., AAPL, Apple)..."
-                className="glass-input w-full pl-10"
+                placeholder="AAPL, VUAA.DE, Apple…"
+                className="glass-input w-full pl-10 pr-10"
                 disabled={!!selectedStock}
               />
               {isSearching && (
@@ -233,7 +271,7 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
 
             {/* Search Results */}
             {searchResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-2 glass-card p-2 max-h-60 overflow-y-auto">
+              <div className="absolute z-10 w-full mt-2 glass-card p-2 max-h-48 overflow-y-auto">
                 {searchResults.map((stock) => (
                   <button
                     key={stock.symbol}
@@ -241,15 +279,15 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                     onClick={() => handleSelectStock(stock)}
                     className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-light/50 transition-colors"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-emerald-bright">{stock.symbol}</span>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold text-emerald-bright flex-shrink-0">{stock.symbol}</span>
                       {stock.type && stock.type !== 'EQUITY' && (
-                        <span className="text-xs px-1.5 py-0.5 rounded bg-sapphire/20 text-sapphire-bright">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-sapphire/20 text-sapphire-bright flex-shrink-0">
                           {stock.type}
                         </span>
                       )}
                     </div>
-                    <span className="text-silver text-sm">{stock.name}</span>
+                    <span className="text-silver text-sm block truncate">{stock.name}</span>
                   </button>
                 ))}
               </div>
@@ -258,13 +296,14 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
 
           {/* Selected Stock */}
           {selectedStock && (
-            <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-glow/10 border border-emerald-glow/30">
-              <div>
-                <span className="font-bold text-emerald-bright">{selectedStock.symbol}</span>
-                <span className="text-silver ml-2 text-sm">{selectedStock.name}</span>
+            <div className="flex items-start justify-between gap-2 p-3 rounded-lg bg-emerald-glow/10 border border-emerald-glow/30">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="font-bold text-emerald-bright">{selectedStock.symbol}</span>
+                  <span className="text-silver text-sm truncate">{selectedStock.name}</span>
+                </div>
                 {currentPriceNative > 0 && (
-                  <p className="text-xs text-steel mt-1">
-                    Current:{' '}
+                  <p className="text-xs text-steel mt-1 break-words">
                     <span className="text-pearl font-mono">
                       {formatCurrency(currentPriceNative, quoteCurrency)}
                     </span>
@@ -286,7 +325,8 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
                   setCurrentPriceNative(0);
                   setCurrentPriceUSD(0);
                 }}
-                className="text-steel hover:text-pearl transition-colors"
+                className="text-steel hover:text-pearl transition-colors flex-shrink-0 p-1"
+                aria-label="Clear selection"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -294,37 +334,37 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
           )}
 
           {selectedStock && fx.isNonUSD && (
-            <div className="p-3 rounded-lg bg-amber/10 border border-amber/20 text-xs text-amber-bright">
-              Quoted in {quoteCurrency}. Costs convert to USD for your portfolio.
+            <div className="p-3 rounded-lg bg-amber/10 border border-amber/20 text-xs text-amber-bright leading-relaxed break-words">
+              Quoted in {quoteCurrency}. Converted to USD for your portfolio.
               {fx.rateLabel ? ` ${fx.rateLabel}.` : ''}
             </div>
           )}
 
           {/* Input Mode Toggle */}
-          <div className="flex items-center justify-center gap-4 p-3 rounded-lg bg-slate-dark/50">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-lg bg-slate-dark/50">
             <button
               type="button"
               onClick={() => setInputMode('shares')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                inputMode === 'shares' 
-                  ? 'bg-emerald-glow/20 text-emerald-bright border border-emerald-glow/30' 
+              className={`flex items-center justify-center gap-1.5 min-h-[40px] px-2 py-2 rounded-lg text-xs sm:text-sm transition-all ${
+                inputMode === 'shares'
+                  ? 'bg-emerald-glow/20 text-emerald-bright border border-emerald-glow/30'
                   : 'text-steel hover:text-silver'
               }`}
             >
-              <Hash className="w-4 h-4" />
-              Enter Shares
+              <Hash className="w-4 h-4 flex-shrink-0" />
+              Shares
             </button>
             <button
               type="button"
               onClick={() => setInputMode('amount')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-                inputMode === 'amount' 
-                  ? 'bg-emerald-glow/20 text-emerald-bright border border-emerald-glow/30' 
+              className={`flex items-center justify-center gap-1.5 min-h-[40px] px-2 py-2 rounded-lg text-xs sm:text-sm transition-all ${
+                inputMode === 'amount'
+                  ? 'bg-emerald-glow/20 text-emerald-bright border border-emerald-glow/30'
                   : 'text-steel hover:text-silver'
               }`}
             >
-              <DollarSign className="w-4 h-4" />
-              Enter Amount
+              <DollarSign className="w-4 h-4 flex-shrink-0" />
+              Amount
             </button>
           </div>
 
@@ -449,27 +489,72 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
             />
           </div>
 
-          {/* Available Cash Display */}
-          {availableCash > 0 && selectedStock && (
-            <div className={`p-3 rounded-xl border ${investedUSD <= availableCash ? 'border-cyan-500/30 bg-cyan-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Wallet className={`w-4 h-4 ${investedUSD <= availableCash ? 'text-cyan-400' : 'text-amber-400'}`} />
-                  <span className="text-sm text-steel">Available Cash:</span>
-                  <span className="font-mono font-semibold text-pearl">${availableCash.toLocaleString()}</span>
-                </div>
-                {investedUSD > 0 && (
-                  <div className="text-right">
-                    <span className="text-xs text-steel">After purchase: </span>
-                    <span className={`font-mono font-semibold ${investedUSD <= availableCash ? 'text-emerald-400' : 'text-amber-400'}`}>
-                      ${Math.max(0, availableCash - investedUSD).toLocaleString()}
-                    </span>
+          {/* Pay from bank / historical purchase */}
+          {selectedStock && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-silver">
+                <Wallet className="inline w-4 h-4 mr-1" />
+                Pay from
+              </label>
+              <select
+                value={fundingSource}
+                onChange={(e) => setFundingSource(e.target.value)}
+                className="glass-input w-full appearance-none"
+              >
+                {cashAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} (${(a.balance || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })})
+                  </option>
+                ))}
+                <option value={NO_DEDUCT}>Don&apos;t deduct (past purchase)</option>
+              </select>
+
+              {deductCash ? (
+                <div
+                  className={`p-3 rounded-xl border ${
+                    investedUSD <= fundingBalance
+                      ? 'border-cyan-500/30 bg-cyan-500/10'
+                      : 'border-amber-500/30 bg-amber-500/10'
+                  }`}
+                >
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between min-w-0">
+                    <p className="text-sm text-steel break-words">
+                      {selectedFundingAccount?.name || 'Bank'}:{' '}
+                      <span className="font-mono font-semibold text-pearl">
+                        ${fundingBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                      </span>
+                    </p>
+                    {investedUSD > 0 && (
+                      <p className="text-sm text-steel">
+                        After:{' '}
+                        <span
+                          className={`font-mono font-semibold ${
+                            investedUSD <= fundingBalance ? 'text-emerald-400' : 'text-amber-400'
+                          }`}
+                        >
+                          $
+                          {Math.max(0, fundingBalance - investedUSD).toLocaleString(undefined, {
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </p>
+                    )}
                   </div>
-                )}
-              </div>
-              {investedUSD > availableCash && investedUSD > 0 && (
-                <p className="text-xs text-amber-400 mt-2">
-                  Purchase amount exceeds available cash. You can still proceed, but this won&apos;t be deducted from your cash balance.
+                  {investedUSD > fundingBalance && investedUSD > 0 && (
+                    <p className="text-xs text-amber-400 mt-2 break-words">
+                      Not enough in this bank. Pick another account or “Don&apos;t deduct”.
+                    </p>
+                  )}
+                  {availableCash > 0 && availableCash !== fundingBalance && (
+                    <p className="text-xs text-steel mt-1">
+                      Total cash across banks: $
+                      {availableCash.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-steel leading-snug">
+                  No cash will be deducted — use this for older buys you already paid for outside the app.
                 </p>
               )}
             </div>
@@ -510,26 +595,29 @@ export default function AddStockModal({ isOpen, onClose, onAdd, prefillStock, av
           )}
 
           {error && (
-            <p className="text-ruby-bright text-sm">{error}</p>
+            <p className="text-ruby-bright text-sm break-words">{error}</p>
           )}
+          </div>
 
-          <div className="flex gap-3 pt-2">
+          <div className="p-4 sm:p-5 border-t border-slate-light/10 grid grid-cols-2 gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={handleClose}
-              className="btn-secondary flex-1"
+              className="btn-secondary min-h-[44px] px-3"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="btn-primary flex-1"
+              className="btn-primary min-h-[44px] px-3 text-sm sm:text-base"
             >
-              Add to Portfolio
+              Add stock
             </button>
           </div>
         </form>
       </div>
     </div>
   );
+
+  return createPortal(modal, document.body);
 }

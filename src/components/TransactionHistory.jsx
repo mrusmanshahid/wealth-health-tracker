@@ -12,31 +12,60 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
+const NO_DEDUCT = 'none';
+
 export default function TransactionHistory({ 
   transactions = [], 
   currentPrice,
+  cashAccounts = [],
   onAddTransaction, 
   onDeleteTransaction 
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [expanded, setExpanded] = useState(true);
+  const defaultFunding =
+    [...cashAccounts].sort((a, b) => (b.balance || 0) - (a.balance || 0))[0]?.id || NO_DEDUCT;
   const [newTransaction, setNewTransaction] = useState({
     type: 'buy',
     shares: '',
     price: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     notes: '',
+    fundingSource: defaultFunding,
   });
+  const [formError, setFormError] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    setFormError('');
     if (!newTransaction.shares || !newTransaction.price) return;
+
+    const shares = parseFloat(newTransaction.shares);
+    const price = parseFloat(newTransaction.price);
+    const total = shares * price;
+    const isBuy = newTransaction.type === 'buy';
+    const deductCash = isBuy && newTransaction.fundingSource !== NO_DEDUCT;
+    const cashAccountId = deductCash ? newTransaction.fundingSource : null;
+
+    if (deductCash) {
+      const account = cashAccounts.find((a) => a.id === cashAccountId);
+      if (!account || (account.balance || 0) < total - 0.0001) {
+        setFormError(
+          `Not enough cash in ${account?.name || 'this bank'}. Choose another bank or "Don't deduct".`
+        );
+        return;
+      }
+    }
     
     onAddTransaction({
-      ...newTransaction,
+      type: newTransaction.type,
+      shares,
+      price,
+      date: newTransaction.date,
+      notes: newTransaction.notes,
       id: Date.now().toString(),
-      shares: parseFloat(newTransaction.shares),
-      price: parseFloat(newTransaction.price),
+      deductCash: isBuy ? deductCash : undefined,
+      cashAccountId: isBuy ? cashAccountId : undefined,
     });
     
     setNewTransaction({
@@ -45,6 +74,7 @@ export default function TransactionHistory({
       price: '',
       date: format(new Date(), 'yyyy-MM-dd'),
       notes: '',
+      fundingSource: defaultFunding,
     });
     setShowAddForm(false);
   };
@@ -270,6 +300,40 @@ export default function TransactionHistory({
                 />
               </div>
 
+              {newTransaction.type === 'buy' && (
+                <div className="mb-4">
+                  <label className="block text-xs text-slate-400 mb-1">Pay from</label>
+                  <select
+                    value={newTransaction.fundingSource}
+                    onChange={(e) =>
+                      setNewTransaction((prev) => ({ ...prev, fundingSource: e.target.value }))
+                    }
+                    className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500"
+                  >
+                    {cashAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ($
+                        {(a.balance || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })})
+                      </option>
+                    ))}
+                    <option value={NO_DEDUCT}>Don&apos;t deduct (past purchase)</option>
+                  </select>
+                  {newTransaction.fundingSource === NO_DEDUCT ? (
+                    <p className="text-xs text-slate-500 mt-1">
+                      No cash will be deducted — for older buys already paid outside the app.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-500 mt-1">
+                      Deducts the buy total from this bank account.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {formError && (
+                <p className="text-sm text-rose-400 mb-3 break-words">{formError}</p>
+              )}
+
               <div className="flex gap-2">
                 <button
                   type="submit"
@@ -279,7 +343,10 @@ export default function TransactionHistory({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddForm(false)}
+                  onClick={() => {
+                    setShowAddForm(false);
+                    setFormError('');
+                  }}
                   className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg text-sm hover:bg-slate-600 transition-colors"
                 >
                   Cancel
@@ -288,7 +355,14 @@ export default function TransactionHistory({
             </form>
           ) : (
             <button
-              onClick={() => setShowAddForm(true)}
+              onClick={() => {
+                const richest =
+                  [...cashAccounts].sort((a, b) => (b.balance || 0) - (a.balance || 0))[0]?.id ||
+                  NO_DEDUCT;
+                setNewTransaction((prev) => ({ ...prev, fundingSource: richest }));
+                setFormError('');
+                setShowAddForm(true);
+              }}
               className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-600 rounded-xl text-slate-400 hover:text-cyan-400 hover:border-cyan-500/50 transition-colors"
             >
               <Plus className="w-5 h-5" />

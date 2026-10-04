@@ -8,7 +8,13 @@ import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
 import { fetchSingleStockNews } from '../services/stockApi';
 import { formatDistanceToNow } from 'date-fns';
 
-export default function StockDetailModal({ stock, onClose, onAddTransaction, onDeleteTransaction }) {
+export default function StockDetailModal({
+  stock,
+  onClose,
+  onAddTransaction,
+  onDeleteTransaction,
+  cashAccounts = [],
+}) {
   const [activeTab, setActiveTab] = useState('overview');
   const [news, setNews] = useState([]);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -322,6 +328,7 @@ export default function StockDetailModal({ stock, onClose, onAddTransaction, onD
           <TransactionHistory
             transactions={stock.transactions || []}
             currentPrice={stock.currentPrice || stock.purchasePrice}
+            cashAccounts={cashAccounts}
             onAddTransaction={(transaction) => onAddTransaction?.(stock.symbol, transaction)}
             onDeleteTransaction={(transactionId) => onDeleteTransaction?.(stock.symbol, transactionId)}
           />
