@@ -40,6 +40,415 @@ async def _run(fn, *args, **kwargs):
     return await loop.run_in_executor(_executor, lambda: fn(*args, **kwargs))
 
 
+def _safe_float(val: Any) -> float | None:
+    if val is None:
+        return None
+    try:
+        num = float(val)
+    except (TypeError, ValueError):
+        return None
+    if num != num:  # NaN
+        return None
+    return num
+
+
+def _rating_label(key: Any, mean: float | None) -> str | None:
+    normalized = str(key or "").lower().replace("_", " ").replace("-", " ").strip()
+    mapping = {
+        "strong buy": "Strong Buy",
+        "buy": "Buy",
+        "overweight": "Buy",
+        "hold": "Hold",
+        "neutral": "Hold",
+        "underperform": "Underperform",
+        "underweight": "Underperform",
+        "sell": "Sell",
+        "strong sell": "Strong Sell",
+    }
+    if normalized in mapping:
+        return mapping[normalized]
+    if mean is None:
+        return None
+    if mean <= 1.5:
+        return "Strong Buy"
+    if mean <= 2.5:
+        return "Buy"
+    if mean <= 3.5:
+        return "Hold"
+    if mean <= 4.5:
+        return "Sell"
+    return "Strong Sell"
+
+
+def _sentiment_from_rating(label: str | None, upside: float | None) -> str:
+    if label in ("Strong Buy", "Buy"):
+        return "bullish"
+    if label in ("Sell", "Strong Sell", "Underperform"):
+        return "bearish"
+    if upside is not None:
+        if upside >= 10:
+            return "bullish"
+        if upside <= -10:
+            return "bearish"
+    return "neutral"
+
+
+def _recommendation_breakdown(ticker: yf.Ticker) -> dict[str, int] | None:
+    try:
+        rec = ticker.recommendations
+        if rec is None or getattr(rec, "empty", True):
+            return None
+        last = rec.iloc[-1]
+        keys = ("strongBuy", "buy", "hold", "sell", "strongSell")
+        out: dict[str, int] = {}
+        for key in keys:
+            if key in last.index:
+                try:
+                    out[key] = int(last[key])
+                except (TypeError, ValueError):
+                    out[key] = 0
+        return out or None
+    except Exception:
+        return None
+
+
+def _extract_analyst(ticker: yf.Ticker, info: dict[str, Any] | None = None, current_price: float = 0.0) -> dict[str, Any]:
+    if info is None:
+        try:
+            info = ticker.info or {}
+        except Exception:
+            info = {}
+
+    price = current_price or _safe_float(info.get("regularMarketPrice") or info.get("currentPrice")) or 0.0
+    target_mean = _safe_float(info.get("targetMeanPrice"))
+    target_high = _safe_float(info.get("targetHighPrice"))
+    target_low = _safe_float(info.get("targetLowPrice"))
+    target_median = _safe_float(info.get("targetMedianPrice"))
+    analyst_count = info.get("numberOfAnalystOpinions")
+    try:
+        analyst_count = int(analyst_count) if analyst_count is not None else None
+    except (TypeError, ValueError):
+        analyst_count = None
+
+    rating_mean = _safe_float(info.get("recommendationMean"))
+    rating_key = info.get("recommendationKey") or info.get("averageAnalystRating")
+    rating = _rating_label(rating_key, rating_mean)
+
+    upside = None
+    if target_mean and price > 0:
+        upside = round(((target_mean - price) / price) * 100, 2)
+
+    breakdown = _recommendation_breakdown(ticker)
+    coverage = bool(target_mean or rating or (breakdown and sum(breakdown.values()) > 0))
+
+    return {
+        "coverage": coverage,
+        "currentPrice": round(price, 4) if price else None,
+        "targetMean": round(target_mean, 4) if target_mean else None,
+        "targetHigh": round(target_high, 4) if target_high else None,
+        "targetLow": round(target_low, 4) if target_low else None,
+        "targetMedian": round(target_median, 4) if target_median else None,
+        "analystCount": analyst_count,
+        "ratingKey": str(rating_key) if rating_key else None,
+        "ratingMean": round(rating_mean, 2) if rating_mean is not None else None,
+        "rating": rating,
+        "sentiment": _sentiment_from_rating(rating, upside) if coverage else "unknown",
+        "upsidePercent": upside,
+        "breakdown": breakdown,
+        "horizon": "12M",
+        "source": "Yahoo Finance analyst consensus",
+    }
+
+
+def _signal(value: float | None, good: float, ok: float, higher_is_better: bool = True) -> str:
+    if value is None:
+        return "unknown"
+    if higher_is_better:
+        if value >= good:
+            return "good"
+        if value >= ok:
+            return "ok"
+        return "bad"
+    if value <= good:
+        return "good"
+    if value <= ok:
+        return "ok"
+    return "bad"
+
+
+def _yoy_from_annual(frame: Any, row_names: tuple[str, ...]) -> float | None:
+    """YoY % change from the two most recent annual columns."""
+    try:
+        if frame is None or getattr(frame, "empty", True):
+            return None
+        row = None
+        for name in row_names:
+            if name in frame.index:
+                row = frame.loc[name]
+                break
+        if row is None:
+            return None
+        vals = [float(v) for v in row.dropna().tolist() if v == v]
+        if len(vals) < 2 or vals[1] == 0:
+            return None
+        # Columns are newest → oldest
+        return ((vals[0] - vals[1]) / abs(vals[1])) * 100
+    except Exception:
+        return None
+
+
+def _extract_fundamentals(ticker: yf.Ticker, info: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Key annual/TTM ratios with simple good/ok/bad signals for quick screening."""
+    if info is None:
+        try:
+            info = ticker.info or {}
+        except Exception:
+            info = {}
+
+    quote_type = str(info.get("quoteType") or "")
+    is_fund = quote_type in ("ETF", "MUTUALFUND")
+
+    profit_margin = _safe_float(info.get("profitMargins"))
+    operating_margin = _safe_float(info.get("operatingMargins"))
+    gross_margin = _safe_float(info.get("grossMargins"))
+    # Yahoo often stores these as fractions (0.25 = 25%)
+    def pct(v: float | None) -> float | None:
+        if v is None:
+            return None
+        return v * 100 if abs(v) <= 1.5 else v
+
+    profit_margin_pct = pct(profit_margin)
+    operating_margin_pct = pct(operating_margin)
+    gross_margin_pct = pct(gross_margin)
+
+    revenue_growth = pct(_safe_float(info.get("revenueGrowth")))
+    earnings_growth = pct(_safe_float(info.get("earningsGrowth") or info.get("earningsQuarterlyGrowth")))
+    roe = pct(_safe_float(info.get("returnOnEquity")))
+    roa = pct(_safe_float(info.get("returnOnAssets")))
+
+    debt_to_equity = _safe_float(info.get("debtToEquity"))  # usually percent, e.g. 145.3
+    current_ratio = _safe_float(info.get("currentRatio"))
+    free_cashflow = _safe_float(info.get("freeCashflow"))
+    trailing_pe = _safe_float(info.get("trailingPE"))
+    forward_pe = _safe_float(info.get("forwardPE"))
+    peg = _safe_float(info.get("pegRatio"))
+    payout = pct(_safe_float(info.get("payoutRatio")))
+    # dividendYield on Yahoo can be fraction or already percent-points — normalize carefully
+    div_yield_raw = _safe_float(info.get("dividendYield"))
+    div_yield = None
+    if div_yield_raw is not None:
+        div_yield = div_yield_raw * 100 if div_yield_raw <= 1 else div_yield_raw
+
+    # Optional YoY from annual statements (best-effort; skip for funds)
+    revenue_yoy = None
+    net_income_yoy = None
+    fcf_yoy = None
+    if not is_fund:
+        try:
+            financials = ticker.financials
+            revenue_yoy = _yoy_from_annual(
+                financials, ("Total Revenue", "Operating Revenue", "Revenue")
+            )
+            net_income_yoy = _yoy_from_annual(
+                financials, ("Net Income", "Net Income Common Stockholders")
+            )
+        except Exception:
+            pass
+        try:
+            cashflow = ticker.cashflow
+            fcf_yoy = _yoy_from_annual(
+                cashflow,
+                ("Free Cash Flow", "FreeCashFlow"),
+            )
+        except Exception:
+            pass
+
+    # Prefer annual YoY when TTM growth missing
+    if revenue_growth is None and revenue_yoy is not None:
+        revenue_growth = revenue_yoy
+    if earnings_growth is None and net_income_yoy is not None:
+        earnings_growth = net_income_yoy
+
+    indicators: list[dict[str, Any]] = []
+
+    def add(
+        key: str,
+        label: str,
+        value: float | None,
+        unit: str,
+        signal: str,
+        tip: str,
+    ) -> None:
+        if value is None:
+            return
+        indicators.append(
+            {
+                "key": key,
+                "label": label,
+                "value": round(value, 2),
+                "unit": unit,
+                "signal": signal,
+                "tip": tip,
+            }
+        )
+
+    if not is_fund:
+        add(
+            "profitMargin",
+            "Profit margin",
+            profit_margin_pct,
+            "%",
+            _signal(profit_margin_pct, 15, 5, True),
+            "Share of revenue kept as profit. Higher is healthier.",
+        )
+        add(
+            "operatingMargin",
+            "Operating margin",
+            operating_margin_pct,
+            "%",
+            _signal(operating_margin_pct, 15, 5, True),
+            "Core business profitability before interest/tax.",
+        )
+        add(
+            "revenueGrowth",
+            "Revenue growth",
+            revenue_growth,
+            "%",
+            _signal(revenue_growth, 10, 0, True),
+            "Top-line growth (TTM or latest annual YoY).",
+        )
+        add(
+            "earningsGrowth",
+            "Earnings growth",
+            earnings_growth,
+            "%",
+            _signal(earnings_growth, 10, 0, True),
+            "Bottom-line growth. Negative is a warning flag.",
+        )
+        add(
+            "roe",
+            "Return on equity",
+            roe,
+            "%",
+            _signal(roe, 15, 8, True),
+            "How efficiently equity generates profit.",
+        )
+        add(
+            "debtToEquity",
+            "Debt / equity",
+            debt_to_equity,
+            "",
+            _signal(debt_to_equity, 50, 100, False),
+            "Leverage. Lower usually means less balance-sheet risk.",
+        )
+        add(
+            "currentRatio",
+            "Current ratio",
+            current_ratio,
+            "x",
+            _signal(current_ratio, 1.5, 1.0, True),
+            "Short-term assets vs liabilities. Below 1 can be risky.",
+        )
+        if free_cashflow is not None:
+            add(
+                "freeCashflow",
+                "Free cash flow",
+                free_cashflow / 1e9 if abs(free_cashflow) >= 1e8 else free_cashflow / 1e6,
+                "B" if abs(free_cashflow) >= 1e8 else "M",
+                "good" if free_cashflow > 0 else "bad",
+                "Cash left after operations/capex. Positive is a strength.",
+            )
+        add(
+            "peg",
+            "PEG ratio",
+            peg,
+            "x",
+            _signal(peg, 1.0, 2.0, False),
+            "PE vs growth. Under ~1 often looks attractive.",
+        )
+        add(
+            "trailingPE",
+            "P/E (TTM)",
+            trailing_pe,
+            "x",
+            _signal(trailing_pe, 20, 35, False) if trailing_pe and trailing_pe > 0 else "unknown",
+            "Price vs earnings. Very high can mean expensive.",
+        )
+        if fcf_yoy is not None:
+            add(
+                "fcfYoy",
+                "FCF growth (YoY)",
+                fcf_yoy,
+                "%",
+                _signal(fcf_yoy, 10, 0, True),
+                "Annual free-cash-flow change from statements.",
+            )
+    else:
+        # Funds: lighter set
+        add(
+            "trailingPE",
+            "P/E",
+            trailing_pe,
+            "x",
+            "ok" if trailing_pe else "unknown",
+            "Fund-level PE when available.",
+        )
+        add(
+            "divYield",
+            "Dividend yield",
+            div_yield,
+            "%",
+            "ok",
+            "Income yield for the fund.",
+        )
+
+    if payout is not None and not is_fund:
+        add(
+            "payout",
+            "Payout ratio",
+            payout,
+            "%",
+            _signal(payout, 60, 90, False),
+            "Share of earnings paid as dividends. Very high may be unsustainable.",
+        )
+
+    good = sum(1 for i in indicators if i["signal"] == "good")
+    ok = sum(1 for i in indicators if i["signal"] == "ok")
+    bad = sum(1 for i in indicators if i["signal"] == "bad")
+    scored = good + ok + bad
+    # Weighted score 0–100
+    score = None
+    if scored:
+        score = round(((good * 1.0 + ok * 0.55) / scored) * 100)
+
+    if score is None:
+        health = "unknown"
+    elif score >= 70:
+        health = "good"
+    elif score >= 45:
+        health = "mixed"
+    else:
+        health = "weak"
+
+    return {
+        "available": len(indicators) > 0,
+        "quoteType": quote_type,
+        "sector": info.get("sector"),
+        "industry": info.get("industry"),
+        "score": score,
+        "health": health,
+        "counts": {"good": good, "ok": ok, "bad": bad},
+        "indicators": indicators,
+        "source": "Yahoo Finance key statistics + annual statements",
+        "note": (
+            "Heuristic signals for quick screening — not investment advice. "
+            "ETFs often have limited company-style fundamentals."
+            if is_fund
+            else "Heuristic signals from TTM ratios and latest annual YoY — not investment advice."
+        ),
+    }
+
+
 def _history_sync(symbol: str, years: int) -> dict[str, Any]:
     ticker = yf.Ticker(symbol)
     period = f"{years}y" if years <= 10 else "max"
@@ -82,12 +491,32 @@ def _history_sync(symbol: str, years: int) -> dict[str, Any]:
     if not current and history:
         current = history[-1]["price"]
 
+    analyst = _extract_analyst(ticker, info, current)
+    fundamentals = _extract_fundamentals(ticker, info)
+
     return {
         "symbol": symbol.upper(),
         "name": info.get("longName") or info.get("shortName") or symbol.upper(),
         "currency": info.get("currency") or "USD",
         "currentPrice": current,
         "history": history,
+        "analyst": analyst,
+        "fundamentals": fundamentals,
+        "quoteType": info.get("quoteType") or "",
+    }
+
+
+def _fundamentals_sync(symbol: str) -> dict[str, Any]:
+    ticker = yf.Ticker(symbol)
+    try:
+        info = ticker.info or {}
+    except Exception:
+        info = {}
+    fundamentals = _extract_fundamentals(ticker, info)
+    return {
+        "symbol": symbol.upper(),
+        "name": info.get("longName") or info.get("shortName") or symbol.upper(),
+        "fundamentals": fundamentals,
     }
 
 
@@ -119,6 +548,8 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
     if not price:
         raise ValueError(f"Error fetching quote for {symbol}")
 
+    analyst = _extract_analyst(ticker, info, price)
+
     return {
         "symbol": (info.get("symbol") or symbol).upper(),
         "name": info.get("longName") or info.get("shortName") or symbol,
@@ -142,6 +573,28 @@ def _quote_sync(symbol: str) -> dict[str, Any]:
         "peRatio": float(info.get("trailingPE") or info.get("forwardPE") or 0) or 0,
         "exchange": info.get("exchange") or "",
         "quoteType": info.get("quoteType") or "",
+        "analyst": analyst,
+    }
+
+
+def _analyst_sync(symbol: str) -> dict[str, Any]:
+    ticker = yf.Ticker(symbol)
+    try:
+        info = ticker.info or {}
+    except Exception:
+        info = {}
+    fast = getattr(ticker, "fast_info", None)
+    price = 0.0
+    if fast is not None:
+        price = float(getattr(fast, "last_price", None) or 0) or 0.0
+    price = price or float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
+    analyst = _extract_analyst(ticker, info, price)
+    return {
+        "symbol": symbol.upper(),
+        "name": info.get("longName") or info.get("shortName") or symbol.upper(),
+        "currency": info.get("currency") or "USD",
+        "quoteType": info.get("quoteType") or "",
+        "analyst": analyst,
     }
 
 
@@ -442,6 +895,14 @@ async def fetch_growth_stocks() -> list[dict[str, Any]]:
 
 async def fetch_stock_recommendations(symbol: str) -> list[dict[str, Any]]:
     return await _run(_recommendations_sync, symbol)
+
+
+async def fetch_stock_analyst(symbol: str) -> dict[str, Any]:
+    return await _run(_analyst_sync, symbol)
+
+
+async def fetch_stock_fundamentals(symbol: str) -> dict[str, Any]:
+    return await _run(_fundamentals_sync, symbol)
 
 
 async def fetch_stock_news(symbols: list[str]) -> list[dict[str, Any]]:

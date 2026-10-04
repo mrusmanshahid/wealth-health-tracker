@@ -1,7 +1,21 @@
-import { TrendingUp, TrendingDown, Trash2, FileText, Edit3, PiggyBank, PieChart, Newspaper, ExternalLink } from 'lucide-react';
+import { TrendingUp, TrendingDown, Trash2, FileText, Edit3, PiggyBank, PieChart, Newspaper, ExternalLink, Users, Target } from 'lucide-react';
 import ContributionGrowthChart from './ContributionGrowthChart';
-import { formatCurrency } from '../services/currencyApi';
+import FundamentalsHealth from './FundamentalsHealth';
 import { formatDistanceToNow } from 'date-fns';
+import { normalizeAnalyst } from '../utils/forecasting';
+
+function ratingStyles(rating, sentiment) {
+  if (sentiment === 'bullish' || ['Strong Buy', 'Buy'].includes(rating)) {
+    return 'bg-emerald-glow/20 text-emerald-bright';
+  }
+  if (sentiment === 'bearish' || ['Sell', 'Strong Sell', 'Underperform'].includes(rating)) {
+    return 'bg-ruby/20 text-ruby-bright';
+  }
+  if (rating || sentiment === 'neutral') {
+    return 'bg-amber/20 text-amber-bright';
+  }
+  return 'bg-slate-light/30 text-steel';
+}
 
 export default function StockCard({ stock, totalPortfolioValue, onRemove, onViewChart, onEdit, latestNews }) {
   const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
@@ -15,11 +29,14 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
   const gainPercent = (gain / investedAmount) * 100;
   const isPositive = gain >= 0;
 
-  // Calculate projected value (5 year)
-  const projectedPrice = stock.forecast?.[stock.forecast.length - 1]?.price || currentPrice;
-  const projectedValue = shares * projectedPrice;
-  const projectedGain = projectedValue - investedAmount;
-  const projectedGainPercent = (projectedGain / investedAmount) * 100;
+  const analyst = normalizeAnalyst(stock.analyst, currentPrice);
+  const targetPrice = analyst.targetMean;
+  const targetValue = targetPrice != null ? shares * targetPrice : null;
+  const upside = analyst.upsidePercent;
+  const breakdown = analyst.breakdown;
+  const totalRecs = breakdown
+    ? (breakdown.strongBuy || 0) + (breakdown.buy || 0) + (breakdown.hold || 0) + (breakdown.sell || 0) + (breakdown.strongSell || 0)
+    : 0;
 
   // Price change from avg cost
   const priceChange = currentPrice - stock.purchasePrice;
@@ -163,26 +180,102 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
         <span className="font-mono text-silver">${investedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
       </div>
 
-      {/* Forecast Section */}
+      {/* Analyst consensus */}
       <div className="pt-4 border-t border-slate-light/30">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">5Y Forecast (USD)</p>
-            <p className={`font-mono font-semibold ${projectedGain >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
-              ${projectedValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-steel uppercase tracking-wide mb-1">Projected Return</p>
-            <p className={`font-mono text-sm ${projectedGain >= 0 ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
-              {projectedGain >= 0 ? '+' : ''}{projectedGainPercent.toFixed(0)}%
-              <span className="text-steel ml-1">
-                (${(projectedGain >= 0 ? '+' : '') + projectedGain.toLocaleString(undefined, { maximumFractionDigits: 0 })})
-              </span>
-            </p>
-          </div>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <p className="text-xs text-steel uppercase tracking-wide flex items-center gap-1">
+            <Target className="w-3 h-3" /> Analyst view (12M)
+          </p>
+          {analyst.coverage ? (
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${ratingStyles(analyst.rating, analyst.sentiment)}`}>
+              {analyst.rating || (analyst.sentiment === 'bullish' ? 'Bullish' : analyst.sentiment === 'bearish' ? 'Bearish' : 'Neutral')}
+            </span>
+          ) : (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-light/30 text-steel">
+              No coverage
+            </span>
+          )}
         </div>
+
+        {analyst.coverage && targetPrice != null ? (
+          <>
+            <div className="flex items-end justify-between gap-2">
+              <div>
+                <p className="text-[10px] text-steel uppercase mb-0.5">Mean target</p>
+                <p className="font-mono font-semibold text-sapphire-bright">
+                  ${Number(targetPrice).toFixed(2)}
+                </p>
+                {targetValue != null && (
+                  <p className="text-[11px] text-silver mt-0.5">
+                    Position → ${targetValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </p>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-steel uppercase mb-0.5">Upside</p>
+                <p className={`font-mono font-semibold text-sm ${upside >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                  {upside >= 0 ? '+' : ''}{Number(upside || 0).toFixed(1)}%
+                </p>
+                {(analyst.targetLow != null || analyst.targetHigh != null) && (
+                  <p className="text-[10px] text-steel mt-0.5">
+                    ${Number(analyst.targetLow ?? targetPrice).toFixed(0)}–${Number(analyst.targetHigh ?? targetPrice).toFixed(0)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {analyst.analystCount != null && (
+              <p className="text-[11px] text-steel mt-2 flex items-center gap-1">
+                <Users className="w-3 h-3" />
+                {analyst.analystCount} analyst{analyst.analystCount === 1 ? '' : 's'}
+              </p>
+            )}
+
+            {totalRecs > 0 && (
+              <div className="mt-2">
+                <div className="flex h-1.5 rounded-full overflow-hidden border border-slate-light/20">
+                  {(breakdown.strongBuy || 0) + (breakdown.buy || 0) > 0 && (
+                    <div
+                      className="bg-emerald-bright"
+                      style={{ width: `${(((breakdown.strongBuy || 0) + (breakdown.buy || 0)) / totalRecs) * 100}%` }}
+                      title="Buy"
+                    />
+                  )}
+                  {(breakdown.hold || 0) > 0 && (
+                    <div
+                      className="bg-amber-bright"
+                      style={{ width: `${((breakdown.hold || 0) / totalRecs) * 100}%` }}
+                      title="Hold"
+                    />
+                  )}
+                  {(breakdown.sell || 0) + (breakdown.strongSell || 0) > 0 && (
+                    <div
+                      className="bg-ruby-bright"
+                      style={{ width: `${(((breakdown.sell || 0) + (breakdown.strongSell || 0)) / totalRecs) * 100}%` }}
+                      title="Sell"
+                    />
+                  )}
+                </div>
+                <div className="flex justify-between text-[10px] text-steel mt-1">
+                  <span className="text-emerald-bright">
+                    Buy {(breakdown.strongBuy || 0) + (breakdown.buy || 0)}
+                  </span>
+                  <span className="text-amber-bright">Hold {breakdown.hold || 0}</span>
+                  <span className="text-ruby-bright">
+                    Sell {(breakdown.sell || 0) + (breakdown.strongSell || 0)}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-steel">
+            Street price targets aren’t available for this {stock.quoteType === 'ETF' ? 'ETF' : 'symbol'} yet.
+          </p>
+        )}
       </div>
+
+      <FundamentalsHealth fundamentals={stock.fundamentals} compact />
 
       {/* Latest News */}
       {latestNews && (

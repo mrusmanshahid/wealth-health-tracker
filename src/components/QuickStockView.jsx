@@ -16,7 +16,7 @@ import {
   Newspaper
 } from 'lucide-react';
 import { fetchStockQuote, fetchStockHistory, fetchSingleStockNews } from '../services/stockApi';
-import { generateForecast } from '../utils/forecasting';
+import { generateAnalystProjection, normalizeAnalyst } from '../utils/forecasting';
 import EarningsReport from './EarningsReport';
 import UnifiedStockChart from './UnifiedStockChart';
 import { formatDistanceToNow } from 'date-fns';
@@ -73,13 +73,16 @@ export default function QuickStockView({
       
       if (historyData && Array.isArray(historyData) && historyData.length > 0) {
         const currentPrice = historyResponse.currentPrice || historyData[historyData.length - 1]?.price || stock.price || 100;
-        const forecast = generateForecast(historyData, 60);
+        const analyst = normalizeAnalyst(historyResponse.analyst || quote?.analyst, currentPrice);
+        const { forecast, confidence } = generateAnalystProjection(currentPrice, analyst, 12);
         
         setStockData({
           symbol: historyResponse.symbol || stock.symbol,
           name: historyResponse.name || stock.name,
           history: historyData,
+          analyst,
           forecast,
+          confidence,
           currentPrice,
           purchasePrice: currentPrice,
           shares: 1,

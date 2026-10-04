@@ -16,7 +16,7 @@ export default function EmptyState({ onAddStock, onLoadDemo }) {
       </h2>
       <p className="text-base sm:text-lg text-silver mb-2">Your Financial Health Companion</p>
       <p className="text-sm sm:text-base text-silver max-w-md mx-auto mb-6 sm:mb-8">
-        Add your first stock to track performance and see 5-year forecasts.
+        Add your first stock to track performance and see Wall Street analyst targets.
       </p>
 
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">

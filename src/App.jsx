@@ -20,7 +20,12 @@ import AuthModal from './components/AuthModal';
 
 import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks, fetchSingleStockNews } from './services/stockApi';
 import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist, saveCashData, loadCashData } from './services/storage';
-import { generateForecast, calculateWealthGrowth, calculatePortfolioMetrics } from './utils/forecasting';
+import {
+  generateAnalystProjection,
+  normalizeAnalyst,
+  calculateWealthGrowth,
+  calculatePortfolioMetrics,
+} from './utils/forecasting';
 import { generateDemoPortfolio } from './utils/demoData';
 import { convertToUSD, getExchangeRate, fetchExchangeRates } from './services/currencyApi';
 import {
@@ -44,8 +49,9 @@ function App() {
     currentValue: 0,
     totalReturn: 0,
     totalReturnPercent: 0,
-    projectedValue5Y: 0,
-    projectedReturn5Y: 0,
+    analystTargetValue: 0,
+    analystUpsidePercent: 0,
+    coveredCount: 0,
   });
   
   const [isLoading, setIsLoading] = useState(true);
@@ -185,8 +191,7 @@ function App() {
   // Recalculate wealth when stocks or settings change
   useEffect(() => {
     if (stocks.length > 0) {
-      const totalContribution = stocks.reduce((sum, stock) => sum + (stock.monthlyContribution || 0), 0);
-      const wealth = calculateWealthGrowth(stocks, totalContribution, settings.forecastYears);
+      const wealth = calculateWealthGrowth(stocks);
       setWealthData(wealth);
       
       const portfolioMetrics = calculatePortfolioMetrics(stocks);
@@ -198,8 +203,9 @@ function App() {
         currentValue: 0,
         totalReturn: 0,
         totalReturnPercent: 0,
-        projectedValue5Y: 0,
-        projectedReturn5Y: 0,
+        analystTargetValue: 0,
+        analystUpsidePercent: 0,
+        coveredCount: 0,
       });
     }
   }, [stocks, settings]);
@@ -236,7 +242,6 @@ function App() {
       portfolioStocks.map(async (stock) => {
         try {
           const data = await fetchStockHistory(stock.symbol, 10);
-          const { forecast, confidence } = generateForecast(data.history, 60);
           
           const currency = data.currency || 'USD';
           const exchangeRate = getExchangeRate(currency);
@@ -248,21 +253,42 @@ function App() {
             priceOriginal: h.price,
             price: convertToUSD(h.price, currency),
           }));
-          
-          // Regenerate forecast with USD prices
-          const { forecast: forecastUSD, confidence: confidenceUSD } = generateForecast(historyUSD, 60);
+
+          const analystNative = data.analyst || null;
+          const analystUSD = analystNative
+            ? normalizeAnalyst(
+                {
+                  ...analystNative,
+                  targetMean: analystNative.targetMean != null ? convertToUSD(analystNative.targetMean, currency) : null,
+                  targetHigh: analystNative.targetHigh != null ? convertToUSD(analystNative.targetHigh, currency) : null,
+                  targetLow: analystNative.targetLow != null ? convertToUSD(analystNative.targetLow, currency) : null,
+                  targetMedian: analystNative.targetMedian != null ? convertToUSD(analystNative.targetMedian, currency) : null,
+                  currentPrice: currentPriceUSD,
+                },
+                currentPriceUSD
+              )
+            : normalizeAnalyst(null, currentPriceUSD);
+
+          const { forecast, confidence, analyst } = generateAnalystProjection(
+            currentPriceUSD,
+            analystUSD,
+            12
+          );
           
           return {
             ...stock,
             name: data.name || stock.name,
             currency,
             exchangeRate,
+            quoteType: data.quoteType || stock.quoteType,
             currentPriceOriginal: data.currentPrice,
             currentPrice: currentPriceUSD,
             historyOriginal: data.history,
             history: historyUSD,
-            forecast: forecastUSD,
-            confidence: confidenceUSD,
+            analyst,
+            fundamentals: data.fundamentals || null,
+            forecast,
+            confidence,
           };
         } catch (err) {
           console.error(`Failed to fetch ${stock.symbol}:`, err);
@@ -320,7 +346,26 @@ function App() {
         price: convertToUSD(h.price, currency),
       }));
       
-      const { forecast, confidence } = generateForecast(historyUSD, 60);
+      const analystNative = data.analyst || null;
+      const analystUSD = analystNative
+        ? normalizeAnalyst(
+            {
+              ...analystNative,
+              targetMean: analystNative.targetMean != null ? convertToUSD(analystNative.targetMean, currency) : null,
+              targetHigh: analystNative.targetHigh != null ? convertToUSD(analystNative.targetHigh, currency) : null,
+              targetLow: analystNative.targetLow != null ? convertToUSD(analystNative.targetLow, currency) : null,
+              targetMedian: analystNative.targetMedian != null ? convertToUSD(analystNative.targetMedian, currency) : null,
+              currentPrice: currentPriceUSD,
+            },
+            currentPriceUSD
+          )
+        : normalizeAnalyst(null, currentPriceUSD);
+
+      const { forecast, confidence, analyst } = generateAnalystProjection(
+        currentPriceUSD,
+        analystUSD,
+        12
+      );
       
       // Convert user's purchase price to USD if needed
       const purchasePriceUSD = newStock.currency === currency 
@@ -332,12 +377,15 @@ function App() {
         name: data.name || newStock.name,
         currency,
         exchangeRate,
+        quoteType: data.quoteType,
         currentPriceOriginal: data.currentPrice,
         currentPrice: currentPriceUSD,
         purchasePriceOriginal: newStock.purchasePrice,
         purchasePrice: purchasePriceUSD,
         historyOriginal: data.history,
         history: historyUSD,
+        analyst,
+        fundamentals: data.fundamentals || null,
         forecast,
         confidence,
       };
@@ -372,9 +420,24 @@ function App() {
     try {
       const demoPortfolio = generateDemoPortfolio();
       const stocksWithForecast = demoPortfolio.map(stock => {
-        const { forecast, confidence } = generateForecast(stock.history, 60);
+        const price = stock.currentPrice || stock.history?.[stock.history.length - 1]?.price;
+        const { forecast, confidence, analyst } = generateAnalystProjection(
+          price,
+          stock.analyst || {
+            coverage: true,
+            targetMean: price * 1.12,
+            targetHigh: price * 1.25,
+            targetLow: price * 0.95,
+            rating: 'Buy',
+            sentiment: 'bullish',
+            analystCount: 18,
+            upsidePercent: 12,
+          },
+          12
+        );
         return {
           ...stock,
+          analyst,
           forecast,
           confidence,
           addedAt: new Date().toISOString(),
@@ -696,6 +759,7 @@ function App() {
                   <WealthChart
                     wealthData={wealthData}
                     monthlyContribution={totalMonthlyContribution}
+                    stocks={stocks}
                   />
                 </div>
 

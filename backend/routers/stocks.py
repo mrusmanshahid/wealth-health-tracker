@@ -77,6 +77,26 @@ async def recommendations(symbol: str):
     return await yahoo.fetch_stock_recommendations(symbol)
 
 
+@router.get("/analyst/{symbol}")
+async def analyst_consensus(symbol: str):
+    try:
+        return await yahoo.fetch_stock_analyst(symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.get("/fundamentals/{symbol}")
+async def fundamentals(symbol: str):
+    try:
+        return await yahoo.fetch_stock_fundamentals(symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.get("/news")
 async def news_multi(symbols: str = Query(..., description="Comma-separated symbols")):
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]

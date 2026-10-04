@@ -95,6 +95,24 @@ export async function fetchStockRecommendations(symbol) {
   }
 }
 
+export async function fetchStockAnalyst(symbol) {
+  try {
+    return await apiGet(`/api/stocks/analyst/${encodeURIComponent(symbol)}`);
+  } catch (error) {
+    console.error('Error fetching analyst consensus:', error);
+    return null;
+  }
+}
+
+export async function fetchStockFundamentals(symbol) {
+  try {
+    return await apiGet(`/api/stocks/fundamentals/${encodeURIComponent(symbol)}`);
+  } catch (error) {
+    console.error('Error fetching fundamentals:', error);
+    return null;
+  }
+}
+
 export async function fetchStockNews(symbols) {
   try {
     const joined = symbols.slice(0, 5).join(',');

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, Calendar, DollarSign, BarChart3, PiggyBank, FileText, Receipt, Newspaper, ExternalLink, RefreshCw } from 'lucide-react';
 import UnifiedStockChart from './UnifiedStockChart';
 import EarningsReport from './EarningsReport';
+import FundamentalsHealth from './FundamentalsHealth';
 import TransactionHistory from './TransactionHistory';
 import { calculateCAGR, calculateMonthlyStats } from '../utils/forecasting';
 import { fetchSingleStockNews } from '../services/stockApi';
@@ -326,9 +327,14 @@ export default function StockDetailModal({ stock, onClose, onAddTransaction, onD
           />
         )}
 
-        {/* Earnings Tab */}
+        {/* Financials Tab */}
         {activeTab === 'earnings' && (
-          <EarningsReport symbol={stock.symbol} />
+          <div className="space-y-4">
+            <div className="glass-card p-4 border border-slate-light/20">
+              <FundamentalsHealth fundamentals={stock.fundamentals} />
+            </div>
+            <EarningsReport symbol={stock.symbol} />
+          </div>
         )}
       </div>
     </div>

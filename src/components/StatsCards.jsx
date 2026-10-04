@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, Wallet, Target, PiggyBank, Sparkles, DollarSign } from 'lucide-react';
+import { TrendingUp, TrendingDown, Wallet, Target, DollarSign, Users } from 'lucide-react';
 
 export default function StatsCards({ metrics }) {
   const {
@@ -6,17 +6,16 @@ export default function StatsCards({ metrics }) {
     currentValue,
     totalReturn,
     totalReturnPercent,
-    projectedValue5Y,
-    projectedReturn5Y,
-    projectedReturnPercent5Y,
+    analystTargetValue = 0,
+    analystUpsidePercent = 0,
+    coveredCount = 0,
   } = metrics;
 
   const isPositiveReturn = totalReturn >= 0;
-  const isPositiveForecast = projectedReturn5Y >= 0;
+  const isPositiveTarget = analystUpsidePercent >= 0;
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-      {/* Total Invested */}
       <div className="stat-card">
         <div className="flex items-center gap-2 mb-2">
           <div className="p-1.5 rounded-lg bg-violet/20">
@@ -29,7 +28,6 @@ export default function StatsCards({ metrics }) {
         </p>
       </div>
 
-      {/* Current Value & P/L */}
       <div className="stat-card">
         <div className="flex items-center gap-2 mb-2">
           <div className={`p-1.5 rounded-lg ${isPositiveReturn ? 'bg-emerald-glow/20' : 'bg-ruby/20'}`}>
@@ -52,9 +50,8 @@ export default function StatsCards({ metrics }) {
         </div>
       </div>
 
-      {/* Unrealized P&L */}
-      <div className={`stat-card relative overflow-hidden`}>
-        <div className={`absolute top-0 left-0 right-0 h-0.5 ${isPositiveReturn ? 'bg-emerald-glow' : 'bg-ruby'}`}></div>
+      <div className="stat-card relative overflow-hidden">
+        <div className={`absolute top-0 left-0 right-0 h-0.5 ${isPositiveReturn ? 'bg-emerald-glow' : 'bg-ruby'}`} />
         <div className="flex items-center gap-2 mb-2">
           <div className={`p-1.5 rounded-lg ${isPositiveReturn ? 'bg-emerald-glow/20' : 'bg-ruby/20'}`}>
             {isPositiveReturn ? (
@@ -70,22 +67,29 @@ export default function StatsCards({ metrics }) {
         </p>
       </div>
 
-      {/* 5 Year Projection */}
       <div className="stat-card relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-20 h-20 bg-sapphire/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2"></div>
+        <div className="absolute top-0 right-0 w-20 h-20 bg-sapphire/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2" />
         <div className="relative">
           <div className="flex items-center gap-2 mb-2">
             <div className="p-1.5 rounded-lg bg-sapphire/20">
               <Target className="w-4 h-4 text-sapphire-bright" />
             </div>
-            <span className="text-xs text-steel uppercase tracking-wide">5Y</span>
+            <span className="text-xs text-steel uppercase tracking-wide">Analyst tgt</span>
           </div>
-          <p className={`text-xl font-bold font-mono text-sapphire-bright`}>
-            ${projectedValue5Y.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          <p className="text-xl font-bold font-mono text-sapphire-bright">
+            ${analystTargetValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </p>
-          <p className={`text-xs mt-0.5 ${isPositiveForecast ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
-            {isPositiveForecast ? '+' : ''}{projectedReturnPercent5Y?.toFixed(0) || 0}%
-          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <p className={`text-xs ${isPositiveTarget ? 'text-sapphire-bright' : 'text-ruby-bright'}`}>
+              {isPositiveTarget ? '+' : ''}{analystUpsidePercent.toFixed(1)}% upside
+            </p>
+            {coveredCount > 0 && (
+              <span className="text-[10px] text-steel inline-flex items-center gap-0.5">
+                <Users className="w-3 h-3" />
+                {coveredCount}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     </div>
