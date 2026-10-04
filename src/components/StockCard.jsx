@@ -17,30 +17,40 @@ function ratingStyles(rating, sentiment) {
   return 'bg-slate-light/30 text-steel';
 }
 
+function money(n, digits = 0) {
+  if (n == null || Number.isNaN(Number(n))) return '—';
+  return `$${Number(n).toLocaleString(undefined, {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits,
+  })}`;
+}
+
 export default function StockCard({ stock, totalPortfolioValue, onRemove, onViewChart, onEdit, latestNews }) {
-  const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
-  const currentPrice = stock.currentPrice || stock.purchasePrice;
+  const purchasePrice = Number(stock.purchasePrice) || 0;
+  const shares = Number(stock.shares) || (purchasePrice > 0 ? Number(stock.investedAmount) / purchasePrice : 0);
+  const currentPrice = Number(stock.currentPrice) || purchasePrice;
   const currentValue = shares * currentPrice;
   
   // Calculate portfolio weight
   const portfolioWeight = totalPortfolioValue > 0 ? (currentValue / totalPortfolioValue) * 100 : 0;
-  const investedAmount = stock.investedAmount || (shares * stock.purchasePrice);
+  const investedAmount = Number(stock.investedAmount) || shares * purchasePrice;
   const gain = currentValue - investedAmount;
-  const gainPercent = (gain / investedAmount) * 100;
+  const gainPercent = investedAmount > 0 ? (gain / investedAmount) * 100 : 0;
   const isPositive = gain >= 0;
 
   const analyst = normalizeAnalyst(stock.analyst, currentPrice);
   const targetPrice = analyst.targetMean;
   const targetValue = targetPrice != null ? shares * targetPrice : null;
   const upside = analyst.upsidePercent;
+  const upsidePositive = (upside ?? 0) >= 0;
   const breakdown = analyst.breakdown;
   const totalRecs = breakdown
     ? (breakdown.strongBuy || 0) + (breakdown.buy || 0) + (breakdown.hold || 0) + (breakdown.sell || 0) + (breakdown.strongSell || 0)
     : 0;
 
   // Price change from avg cost
-  const priceChange = currentPrice - stock.purchasePrice;
-  const priceChangePercent = (priceChange / stock.purchasePrice) * 100;
+  const priceChange = currentPrice - purchasePrice;
+  const priceChangePercent = purchasePrice > 0 ? (priceChange / purchasePrice) * 100 : 0;
 
   // Check if non-USD currency
   const isNonUSD = stock.currency && stock.currency !== 'USD';
@@ -106,25 +116,23 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
         <div>
           <p className="text-xs text-steel uppercase tracking-wide mb-1">Shares</p>
           <p className="font-mono font-semibold text-pearl">
-            {shares.toFixed(shares < 1 ? 4 : 2)}
+            {shares.toLocaleString(undefined, { maximumFractionDigits: shares < 1 ? 4 : 2 })}
           </p>
         </div>
         <div>
           <p className="text-xs text-steel uppercase tracking-wide mb-1">Avg Cost (USD)</p>
-          <p className="font-mono text-silver">
-            ${stock.purchasePrice.toFixed(2)}
-          </p>
+          <p className="font-mono text-silver">{money(purchasePrice, 2)}</p>
         </div>
         <div>
           <p className="text-xs text-steel uppercase tracking-wide mb-1">Current Price</p>
           <div>
             {isNonUSD && stock.currentPriceOriginal && (
               <p className="font-mono text-amber-bright text-sm">
-                {currencySymbol}{stock.currentPriceOriginal.toFixed(2)}
+                {currencySymbol}{Number(stock.currentPriceOriginal).toFixed(2)}
               </p>
             )}
-            <p className="font-mono text-pearl flex items-center gap-1">
-              ${currentPrice.toFixed(2)}
+            <p className="font-mono text-pearl flex items-center gap-1 flex-wrap">
+              {money(currentPrice, 2)}
               <span className={`text-xs ${priceChange >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
                 ({priceChange >= 0 ? '+' : ''}{priceChangePercent.toFixed(1)}%)
               </span>
@@ -134,7 +142,7 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
         <div>
           <p className="text-xs text-steel uppercase tracking-wide mb-1">Market Value</p>
           <p className={`font-mono font-semibold ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-            ${currentValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {money(currentValue)}
           </p>
         </div>
       </div>
@@ -155,7 +163,7 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
             <p className="text-xs text-steel uppercase tracking-wide mb-1">Unrealized P&L (USD)</p>
             <div className="flex items-center gap-2">
               <p className={`font-mono font-bold text-lg ${isPositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                {isPositive ? '+' : ''}${gain.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                {isPositive ? '+' : ''}{money(gain)}
               </p>
               <span className={`text-sm px-2 py-0.5 rounded ${
                 isPositive ? 'bg-emerald-glow/10 text-emerald-pale' : 'bg-ruby/10 text-ruby-bright'
@@ -177,7 +185,7 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
       {/* Cost Basis */}
       <div className="flex items-center justify-between text-sm mb-4">
         <span className="text-steel">Cost Basis (USD)</span>
-        <span className="font-mono text-silver">${investedAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+        <span className="font-mono text-silver">{money(investedAmount)}</span>
       </div>
 
       {/* Analyst consensus */}
@@ -203,22 +211,22 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
               <div>
                 <p className="text-[10px] text-steel uppercase mb-0.5">Mean target</p>
                 <p className="font-mono font-semibold text-sapphire-bright">
-                  ${Number(targetPrice).toFixed(2)}
+                  {money(targetPrice, 2)}
                 </p>
                 {targetValue != null && (
                   <p className="text-[11px] text-silver mt-0.5">
-                    Position → ${targetValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    Position → {money(targetValue)}
                   </p>
                 )}
               </div>
               <div className="text-right">
                 <p className="text-[10px] text-steel uppercase mb-0.5">Upside</p>
-                <p className={`font-mono font-semibold text-sm ${upside >= 0 ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
-                  {upside >= 0 ? '+' : ''}{Number(upside || 0).toFixed(1)}%
+                <p className={`font-mono font-semibold text-sm ${upsidePositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+                  {upsidePositive ? '+' : ''}{Number(upside || 0).toFixed(1)}%
                 </p>
                 {(analyst.targetLow != null || analyst.targetHigh != null) && (
                   <p className="text-[10px] text-steel mt-0.5">
-                    ${Number(analyst.targetLow ?? targetPrice).toFixed(0)}–${Number(analyst.targetHigh ?? targetPrice).toFixed(0)}
+                    {money(analyst.targetLow ?? targetPrice, 0)}–{money(analyst.targetHigh ?? targetPrice, 0)}
                   </p>
                 )}
               </div>

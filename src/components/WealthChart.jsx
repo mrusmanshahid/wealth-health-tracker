@@ -317,7 +317,10 @@ export default function WealthChart({ wealthData, monthlyContribution = 0, stock
             tickLine={false}
             axisLine={false}
             width={55}
-            domain={['auto', 'auto']}
+            domain={[
+              (dataMin) => Math.max(0, dataMin * 0.92),
+              (dataMax) => dataMax * 1.08,
+            ]}
           />
           <Tooltip content={<CustomTooltip />} />
 

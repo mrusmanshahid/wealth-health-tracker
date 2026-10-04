@@ -17,13 +17,21 @@ function SignalIcon({ signal }) {
 function formatIndicator(ind) {
   if (ind.value == null) return '—';
   const n = Number(ind.value);
+  if (Number.isNaN(n)) return '—';
   if (ind.unit === '%') return `${n.toFixed(1)}%`;
-  if (ind.unit === 'x') return `${n.toFixed(2)}x`;
-  if (ind.unit === 'B' || ind.unit === 'M') {
+  if (ind.unit === 'x') return `${n.toFixed(2)}×`;
+  if (ind.unit === 'M') {
+    // Auto-scale millions → billions for readability
     const sign = n < 0 ? '-' : '';
-    return `${sign}${Math.abs(n).toFixed(1)}${ind.unit}`;
+    const abs = Math.abs(n);
+    if (abs >= 1000) return `${sign}${(abs / 1000).toFixed(1)}B`;
+    return `${sign}${abs.toFixed(0)}M`;
   }
-  return n.toFixed(1);
+  if (ind.unit === 'B') {
+    const sign = n < 0 ? '-' : '';
+    return `${sign}${Math.abs(n).toFixed(1)}B`;
+  }
+  return n.toFixed(2);
 }
 
 function healthLabel(health) {

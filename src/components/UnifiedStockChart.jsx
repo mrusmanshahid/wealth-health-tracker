@@ -11,158 +11,122 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { format, addMonths } from 'date-fns';
+import { normalizeAnalyst } from '../utils/forecasting';
+
+function formatMoney(value) {
+  if (value == null || Number.isNaN(value)) return '—';
+  if (Math.abs(value) >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
+  if (Math.abs(value) >= 10000) return `$${(value / 1000).toFixed(1)}k`;
+  return `$${Math.round(value).toLocaleString()}`;
+}
 
 export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
-  // Calculate growth rates from historical data using CAGR
-  const growthRates = useMemo(() => {
-    const DEFAULT = { sixMonth: 0.08, oneYear: 0.08, fiveYear: 0.10, tenYear: 0.10 };
-    const MIN_RATE = -0.30; // Allow more downside for accuracy
-    const MAX_RATE = 0.50;  // Allow more upside for growth stocks
-    
-    if (!stock?.history || stock.history.length < 6) return DEFAULT;
+  const analyst = useMemo(
+    () => normalizeAnalyst(stock?.analyst, stock?.currentPrice),
+    [stock?.analyst, stock?.currentPrice]
+  );
 
-    const history = stock.history;
-    
-    // Calculate CAGR (Compound Annual Growth Rate) - same as display cards
-    const calcCAGR = (data) => {
-      if (!data || data.length < 2) return 0.08;
-      const startPrice = data[0]?.price;
-      const endPrice = data[data.length - 1]?.price;
-      const months = data.length;
-      
-      if (!startPrice || !endPrice || startPrice <= 0 || endPrice <= 0) return 0.08;
-      
-      // CAGR formula: (endValue/startValue)^(1/years) - 1
-      const years = months / 12;
-      const rate = Math.pow(endPrice / startPrice, 1 / years) - 1;
-      
-      return Math.max(MIN_RATE, Math.min(MAX_RATE, rate));
-    };
+  const { chartData, todayDate, summary } = useMemo(() => {
+    if (!stock?.history?.length) {
+      return { chartData: [], todayDate: null, summary: null };
+    }
 
-    const recent6 = history.slice(-6);
-    const recent12 = history.slice(-12);
-    const recent60 = history.slice(-60);
-
-    // Use CAGR for each period
-    const sixMonth = recent6.length >= 2 ? calcCAGR(recent6) : 0.08;
-    const oneYear = recent12.length >= 2 ? calcCAGR(recent12) : sixMonth;
-    const fiveYear = recent60.length >= 12 ? calcCAGR(recent60) : oneYear;
-    const tenYear = history.length >= 12 ? calcCAGR(history) : fiveYear;
-
-    return { sixMonth, oneYear, fiveYear, tenYear };
-  }, [stock?.history]);
-
-  // Build unified chart data
-  const { chartData, todayIndex, finalValues } = useMemo(() => {
-    if (!stock?.history) return { chartData: [], todayIndex: -1, finalValues: null };
-
-    const shares = stock.shares || (stock.investedAmount / stock.purchasePrice);
-    const result = [];
-
-    // Get the current real-time price (fall back to last historical if not available)
-    const currentPrice = stock.currentPrice || stock.history[stock.history.length - 1]?.price || 0;
-
-    // Historical data - convert to portfolio value
-    stock.history.forEach((h, i) => {
-      result.push({
-        date: h.date,
-        value: h.price * shares,
-        price: h.price,
-        isHistorical: true,
-      });
-    });
-
-    // Update the last entry with current real-time price
+    const shares =
+      stock.shares || stock.investedAmount / (stock.purchasePrice || stock.currentPrice || 1);
+    const currentPrice =
+      stock.currentPrice || stock.history[stock.history.length - 1]?.price || 0;
     const today = new Date().toISOString().split('T')[0];
-    const lastEntry = result[result.length - 1];
-    
-    // If the last historical date is not today, add today's data point
-    if (lastEntry && lastEntry.date < today) {
+
+    const result = stock.history.map((h) => ({
+      date: h.date,
+      value: h.price * shares,
+      price: h.price,
+      isHistorical: true,
+      analystMean: null,
+      analystLow: null,
+      analystHigh: null,
+      bandBase: null,
+      bandSize: null,
+    }));
+
+    const last = result[result.length - 1];
+    if (last && last.date < today) {
       result.push({
         date: today,
         value: currentPrice * shares,
         price: currentPrice,
         isHistorical: true,
+        analystMean: currentPrice * shares,
+        analystLow: currentPrice * shares,
+        analystHigh: currentPrice * shares,
+        bandBase: currentPrice * shares,
+        bandSize: 0,
       });
-    } else if (lastEntry) {
-      // Update the last entry with current price
-      lastEntry.value = currentPrice * shares;
-      lastEntry.price = currentPrice;
+    } else if (last) {
+      last.value = currentPrice * shares;
+      last.price = currentPrice;
+      last.analystMean = currentPrice * shares;
+      last.analystLow = currentPrice * shares;
+      last.analystHigh = currentPrice * shares;
+      last.bandBase = currentPrice * shares;
+      last.bandSize = 0;
     }
 
-    const lastHistorical = result[result.length - 1];
-    const lastDate = new Date(lastHistorical.date);
-    const lastValue = lastHistorical.value;
-    const todayIdx = result.length - 1;
+    const startValue = currentPrice * shares;
+    const meanPx = analyst.targetMean ?? currentPrice;
+    const lowPx =
+      analyst.targetLow != null && analyst.targetLow > 0 && analyst.targetLow <= meanPx
+        ? analyst.targetLow
+        : meanPx * 0.92;
+    const highPx =
+      analyst.targetHigh != null && analyst.targetHigh >= meanPx
+        ? analyst.targetHigh
+        : meanPx * 1.08;
 
-    // Initialize projections from last historical value
-    let sixMonthValue = lastValue;
-    let oneYearValue = lastValue;
-    let fiveYearValue = lastValue;
-    let tenYearValue = lastValue;
+    const endMean = meanPx * shares;
+    const endLow = Math.min(lowPx, meanPx) * shares;
+    const endHigh = Math.max(highPx, meanPx) * shares;
+    const lastDate = new Date(result[result.length - 1].date);
 
-    // Bridge point - all projections start from current value
-    result[todayIdx] = {
-      ...result[todayIdx],
-      sixMonthProj: lastValue,
-      oneYearProj: lastValue,
-      fiveYearProj: lastValue,
-      tenYearProj: lastValue,
-    };
-
-    // Monthly rates
-    const sixMonthRate = growthRates.sixMonth / 12;
-    const oneYearRate = growthRates.oneYear / 12;
-    const fiveYearRate = growthRates.fiveYear / 12;
-    const tenYearRate = growthRates.tenYear / 12;
-
-    // Project 5 years (60 months)
-    for (let i = 1; i <= 60; i++) {
-      const futureDate = addMonths(lastDate, i);
-      
-      // Apply growth
-      sixMonthValue = sixMonthValue * (1 + sixMonthRate) + (monthlyContribution * shares / lastValue || 0);
-      oneYearValue = oneYearValue * (1 + oneYearRate) + (monthlyContribution * shares / lastValue || 0);
-      fiveYearValue = fiveYearValue * (1 + fiveYearRate) + (monthlyContribution * shares / lastValue || 0);
-      tenYearValue = tenYearValue * (1 + tenYearRate) + (monthlyContribution * shares / lastValue || 0);
-
-      // If monthly contribution exists, add it
-      if (monthlyContribution > 0) {
-        const addShares = monthlyContribution / (result[todayIdx].price * Math.pow(1 + tenYearRate, i));
-        sixMonthValue += monthlyContribution;
-        oneYearValue += monthlyContribution;
-        fiveYearValue += monthlyContribution;
-        tenYearValue += monthlyContribution;
-      }
+    for (let i = 1; i <= 12; i++) {
+      const t = i / 12;
+      const contrib = monthlyContribution * i;
+      const mean = startValue + (endMean - startValue) * t + contrib;
+      const low = startValue + (endLow - startValue) * t + contrib;
+      const high = startValue + (endHigh - startValue) * t + contrib;
+      const lo = Math.min(low, mean);
+      const hi = Math.max(high, mean);
 
       result.push({
-        date: format(futureDate, 'yyyy-MM-dd'),
+        date: format(addMonths(lastDate, i), 'yyyy-MM-dd'),
         value: null,
+        price: null,
         isForecast: true,
-        sixMonthProj: Math.round(sixMonthValue),
-        oneYearProj: Math.round(oneYearValue),
-        fiveYearProj: Math.round(fiveYearValue),
-        tenYearProj: Math.round(tenYearValue),
+        analystMean: Math.round(mean),
+        analystLow: Math.round(lo),
+        analystHigh: Math.round(hi),
+        bandBase: Math.round(lo),
+        bandSize: Math.round(hi - lo),
       });
     }
+
+    const upside =
+      startValue > 0 ? ((endMean - startValue) / startValue) * 100 : 0;
 
     return {
       chartData: result,
-      todayIndex: todayIdx,
-      finalValues: {
-        sixMonth: result[result.length - 1].sixMonthProj,
-        oneYear: result[result.length - 1].oneYearProj,
-        fiveYear: result[result.length - 1].fiveYearProj,
-        tenYear: result[result.length - 1].tenYearProj,
-      }
+      todayDate: today,
+      summary: {
+        now: startValue,
+        target: endMean,
+        low: endLow,
+        high: endHigh,
+        upside,
+        covered: Boolean(analyst.targetMean),
+        rating: analyst.rating,
+      },
     };
-  }, [stock, monthlyContribution, growthRates]);
-
-  const formatValue = (value) => {
-    if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`;
-    if (value >= 1000) return `$${(value / 1000).toFixed(0)}k`;
-    return `$${value?.toFixed(0) || 0}`;
-  };
+  }, [stock, monthlyContribution, analyst]);
 
   const formatDate = (dateStr) => {
     try {
@@ -173,48 +137,36 @@ export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
   };
 
   const CustomTooltip = ({ active, payload, label }) => {
-    if (!active || !payload || !payload.length) return null;
+    if (!active || !payload?.length) return null;
     const data = payload[0]?.payload;
-    const isHistorical = data?.isHistorical;
-
     return (
       <div className="glass-card p-3 text-xs border-emerald-glow/30 min-w-[180px]">
         <p className="text-steel mb-2 font-medium">{formatDate(label)}</p>
-        {isHistorical && data?.value && (
+        {data?.isHistorical && data?.value != null && (
           <div className="flex justify-between mb-1">
-            <span className="text-pearl">Value:</span>
-            <span className="font-mono text-pearl">{formatValue(data.value)}</span>
+            <span className="text-pearl">Position</span>
+            <span className="font-mono text-pearl">{formatMoney(data.value)}</span>
           </div>
         )}
-        {data?.sixMonthProj && (
-          <div className="flex justify-between">
-            <span className="text-amber-400">6M ({(growthRates.sixMonth * 100).toFixed(0)}%):</span>
-            <span className="font-mono text-amber-400">{formatValue(data.sixMonthProj)}</span>
-          </div>
-        )}
-        {data?.oneYearProj && (
-          <div className="flex justify-between">
-            <span className="text-emerald-bright">1Y ({(growthRates.oneYear * 100).toFixed(0)}%):</span>
-            <span className="font-mono text-emerald-bright">{formatValue(data.oneYearProj)}</span>
-          </div>
-        )}
-        {data?.fiveYearProj && (
-          <div className="flex justify-between">
-            <span className="text-sapphire-bright">5Y ({(growthRates.fiveYear * 100).toFixed(0)}%):</span>
-            <span className="font-mono text-sapphire-bright">{formatValue(data.fiveYearProj)}</span>
-          </div>
-        )}
-        {data?.tenYearProj && (
-          <div className="flex justify-between">
-            <span className="text-violet-bright">10Y ({(growthRates.tenYear * 100).toFixed(0)}%):</span>
-            <span className="font-mono text-violet-bright">{formatValue(data.tenYearProj)}</span>
-          </div>
+        {data?.isForecast && data?.analystMean != null && (
+          <>
+            <div className="flex justify-between">
+              <span className="text-sapphire-bright">Mean target</span>
+              <span className="font-mono text-sapphire-bright">{formatMoney(data.analystMean)}</span>
+            </div>
+            <div className="flex justify-between mt-1 text-[11px]">
+              <span className="text-steel">Low / High</span>
+              <span className="font-mono text-silver">
+                {formatMoney(data.analystLow)} – {formatMoney(data.analystHigh)}
+              </span>
+            </div>
+          </>
         )}
       </div>
     );
   };
 
-  if (chartData.length === 0) {
+  if (!chartData.length) {
     return (
       <div className="chart-container h-64 flex items-center justify-center">
         <p className="text-steel">No data available</p>
@@ -222,78 +174,74 @@ export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
     );
   }
 
-  const todayDate = chartData[todayIndex]?.date;
+  const upsidePositive = (summary?.upside || 0) >= 0;
 
   return (
     <div className="chart-container">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <div>
           <h3 className="text-lg font-bold text-pearl">{stock.symbol} Performance</h3>
           <p className="text-xs text-steel">
-            Historical & 5-year projections
-            {monthlyContribution > 0 && ` • $${monthlyContribution}/mo`}
+            History + 12M analyst target
+            {monthlyContribution > 0 && ` · $${monthlyContribution}/mo`}
           </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs">
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-2 rounded-full bg-pearl"></div>
-            <span className="text-steel">History</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-0.5 bg-amber-400"></div>
-            <span className="text-steel">6M</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-0.5 bg-emerald-bright"></div>
-            <span className="text-steel">1Y</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-0.5 bg-sapphire-bright"></div>
-            <span className="text-steel">5Y</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <div className="w-2 h-0.5 bg-violet-bright"></div>
-            <span className="text-steel">10Y</span>
-          </div>
         </div>
       </div>
 
-      {/* Projection Summary Cards */}
-      {finalValues && (
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-center">
-            <p className="text-[10px] text-steel">6M Trend</p>
-            <p className="font-mono font-semibold text-amber-400 text-sm">{formatValue(finalValues.sixMonth)}</p>
-          </div>
-          <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-center">
-            <p className="text-[10px] text-steel">1Y Trend</p>
-            <p className="font-mono font-semibold text-emerald-bright text-sm">{formatValue(finalValues.oneYear)}</p>
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+          <div className="p-2 rounded-lg bg-slate-dark/50 border border-slate-light/10 text-center">
+            <p className="text-[10px] text-steel">Now</p>
+            <p className="font-mono font-semibold text-pearl text-sm">{formatMoney(summary.now)}</p>
           </div>
           <div className="p-2 rounded-lg bg-sapphire/10 border border-sapphire/20 text-center">
-            <p className="text-[10px] text-steel">5Y Avg</p>
-            <p className="font-mono font-semibold text-sapphire-bright text-sm">{formatValue(finalValues.fiveYear)}</p>
+            <p className="text-[10px] text-sapphire-bright">12M target</p>
+            <p className="font-mono font-semibold text-sapphire-bright text-sm">
+              {summary.covered ? formatMoney(summary.target) : '—'}
+            </p>
           </div>
-          <div className="p-2 rounded-lg bg-violet/10 border border-violet/20 text-center">
-            <p className="text-[10px] text-steel">10Y Avg</p>
-            <p className="font-mono font-semibold text-violet-bright text-sm">{formatValue(finalValues.tenYear)}</p>
+          <div
+            className={`p-2 rounded-lg border text-center ${
+              upsidePositive
+                ? 'bg-emerald-glow/10 border-emerald-glow/20'
+                : 'bg-ruby/10 border-ruby/20'
+            }`}
+          >
+            <p className={`text-[10px] ${upsidePositive ? 'text-emerald-bright' : 'text-ruby-bright'}`}>
+              Upside
+            </p>
+            <p
+              className={`font-mono font-semibold text-sm ${
+                upsidePositive ? 'text-emerald-bright' : 'text-ruby-bright'
+              }`}
+            >
+              {summary.covered
+                ? `${upsidePositive ? '+' : ''}${summary.upside.toFixed(1)}%`
+                : '—'}
+            </p>
+          </div>
+          <div className="p-2 rounded-lg bg-slate-dark/50 border border-slate-light/10 text-center">
+            <p className="text-[10px] text-steel">Rating</p>
+            <p className="font-semibold text-silver text-sm">{summary.rating || 'N/A'}</p>
           </div>
         </div>
       )}
 
-      {/* Chart */}
       <ResponsiveContainer width="100%" height={280}>
         <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="stockHistGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#f8fafc" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#f8fafc" stopOpacity={0} />
+              <stop offset="5%" stopColor="#34d399" stopOpacity={0.35} />
+              <stop offset="95%" stopColor="#34d399" stopOpacity={0} />
+            </linearGradient>
+            <linearGradient id="stockBandFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.08} />
             </linearGradient>
           </defs>
-          
+
           <CartesianGrid strokeDasharray="3 3" stroke="rgba(100, 116, 139, 0.15)" vertical={false} />
-          
-          <XAxis 
+          <XAxis
             dataKey="date"
             tickFormatter={formatDate}
             stroke="#64748b"
@@ -303,35 +251,52 @@ export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
             interval="preserveStartEnd"
             minTickGap={50}
           />
-          
-          <YAxis 
-            tickFormatter={formatValue}
+          <YAxis
+            tickFormatter={formatMoney}
             stroke="#64748b"
             fontSize={10}
             tickLine={false}
             axisLine={false}
-            width={45}
+            width={50}
+            domain={['auto', 'auto']}
           />
-          
           <Tooltip content={<CustomTooltip />} />
 
-          {/* Historical area */}
           <Area
             type="monotone"
             dataKey="value"
-            stroke="#f8fafc"
+            stroke="#34d399"
             strokeWidth={2}
             fill="url(#stockHistGradient)"
             connectNulls={false}
           />
-
-          {/* Projection lines */}
-          <Line type="monotone" dataKey="sixMonthProj" stroke="#f59e0b" strokeWidth={1.5} dot={false} connectNulls={false} />
-          <Line type="monotone" dataKey="oneYearProj" stroke="#10b981" strokeWidth={1.5} dot={false} connectNulls={false} />
-          <Line type="monotone" dataKey="fiveYearProj" stroke="#3b82f6" strokeWidth={1.5} dot={false} connectNulls={false} />
-          <Line type="monotone" dataKey="tenYearProj" stroke="#8b5cf6" strokeWidth={1.5} dot={false} connectNulls={false} />
-
-          {/* Today marker */}
+          <Area
+            type="monotone"
+            dataKey="bandBase"
+            stackId="band"
+            stroke="none"
+            fill="transparent"
+            connectNulls
+            activeDot={false}
+            isAnimationActive={false}
+          />
+          <Area
+            type="monotone"
+            dataKey="bandSize"
+            stackId="band"
+            stroke="none"
+            fill="url(#stockBandFill)"
+            connectNulls
+            activeDot={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="analystMean"
+            stroke="#60a5fa"
+            strokeWidth={2.5}
+            dot={false}
+            connectNulls
+          />
           {todayDate && (
             <ReferenceLine x={todayDate} stroke="#f59e0b" strokeDasharray="3 3" strokeWidth={1} />
           )}
@@ -340,4 +305,3 @@ export default function UnifiedStockChart({ stock, monthlyContribution = 0 }) {
     </div>
   );
 }
-

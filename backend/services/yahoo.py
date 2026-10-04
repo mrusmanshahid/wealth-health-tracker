@@ -221,23 +221,49 @@ def _extract_fundamentals(ticker: yf.Ticker, info: dict[str, Any] | None = None)
     operating_margin_pct = pct(operating_margin)
     gross_margin_pct = pct(gross_margin)
 
-    revenue_growth = pct(_safe_float(info.get("revenueGrowth")))
-    earnings_growth = pct(_safe_float(info.get("earningsGrowth") or info.get("earningsQuarterlyGrowth")))
+    def growth_pct(v: float | None) -> float | None:
+        """Normalize Yahoo growth fractions (0.16) or whole percents (16)."""
+        if v is None:
+            return None
+        return v * 100 if abs(v) < 10 else v
+
+    revenue_growth = growth_pct(_safe_float(info.get("revenueGrowth")))
+    earnings_growth = growth_pct(
+        _safe_float(info.get("earningsGrowth") or info.get("earningsQuarterlyGrowth"))
+    )
     roe = pct(_safe_float(info.get("returnOnEquity")))
     roa = pct(_safe_float(info.get("returnOnAssets")))
 
-    debt_to_equity = _safe_float(info.get("debtToEquity"))  # usually percent, e.g. 145.3
+    # Yahoo debtToEquity is usually percent (78.44 → 0.78x). Rarely already a ratio.
+    debt_to_equity_raw = _safe_float(info.get("debtToEquity"))
+    debt_to_equity = None
+    if debt_to_equity_raw is not None:
+        debt_to_equity = (
+            debt_to_equity_raw / 100.0 if debt_to_equity_raw > 5 else debt_to_equity_raw
+        )
+
     current_ratio = _safe_float(info.get("currentRatio"))
     free_cashflow = _safe_float(info.get("freeCashflow"))
     trailing_pe = _safe_float(info.get("trailingPE"))
     forward_pe = _safe_float(info.get("forwardPE"))
     peg = _safe_float(info.get("pegRatio"))
+    # Ignore nonsense PEG / PE
+    if peg is not None and (peg <= 0 or peg > 50):
+        peg = None
+    if trailing_pe is not None and trailing_pe <= 0:
+        trailing_pe = None
     payout = pct(_safe_float(info.get("payoutRatio")))
-    # dividendYield on Yahoo can be fraction or already percent-points — normalize carefully
+    # dividendYield: fraction (0.004) or percent-points (0.4) or whole percent (0.4–10)
     div_yield_raw = _safe_float(info.get("dividendYield"))
     div_yield = None
     if div_yield_raw is not None:
-        div_yield = div_yield_raw * 100 if div_yield_raw <= 1 else div_yield_raw
+        if div_yield_raw <= 0.2:  # typical yield as fraction
+            div_yield = div_yield_raw * 100
+        elif div_yield_raw <= 20:  # already in percent
+            div_yield = div_yield_raw
+        else:
+            div_yield = None  # garbage / mis-scaled
+
 
     # Optional YoY from annual statements (best-effort; skip for funds)
     revenue_yoy = None
@@ -325,21 +351,23 @@ def _extract_fundamentals(ticker: yf.Ticker, info: dict[str, Any] | None = None)
             _signal(earnings_growth, 10, 0, True),
             "Bottom-line growth. Negative is a warning flag.",
         )
+        # Extreme ROE (>80%) is often distorted by buybacks / thin equity — don't mark as pure "good"
+        roe_signal = "ok" if roe is not None and roe > 80 else _signal(roe, 15, 8, True)
         add(
             "roe",
             "Return on equity",
             roe,
             "%",
-            _signal(roe, 15, 8, True),
-            "How efficiently equity generates profit.",
+            roe_signal,
+            "How efficiently equity generates profit. Very high ROE can be distorted by buybacks.",
         )
         add(
             "debtToEquity",
             "Debt / equity",
             debt_to_equity,
-            "",
-            _signal(debt_to_equity, 50, 100, False),
-            "Leverage. Lower usually means less balance-sheet risk.",
+            "x",
+            _signal(debt_to_equity, 0.5, 1.0, False),
+            "Leverage ratio (debt ÷ equity). Lower usually means less balance-sheet risk.",
         )
         add(
             "currentRatio",
@@ -350,11 +378,13 @@ def _extract_fundamentals(ticker: yf.Ticker, info: dict[str, Any] | None = None)
             "Short-term assets vs liabilities. Below 1 can be risky.",
         )
         if free_cashflow is not None:
+            # Keep value in millions for consistent formatting
+            fcf_m = free_cashflow / 1e6
             add(
                 "freeCashflow",
                 "Free cash flow",
-                free_cashflow / 1e9 if abs(free_cashflow) >= 1e8 else free_cashflow / 1e6,
-                "B" if abs(free_cashflow) >= 1e8 else "M",
+                fcf_m,
+                "M",
                 "good" if free_cashflow > 0 else "bad",
                 "Cash left after operations/capex. Positive is a strength.",
             )
