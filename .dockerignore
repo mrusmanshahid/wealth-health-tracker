@@ -10,5 +10,7 @@ dist
 *.pyc
 .env
 .env.*
+*.db
+whealth.db
 npm-debug.log*
 .DS_Store

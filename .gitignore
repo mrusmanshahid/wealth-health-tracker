@@ -19,6 +19,13 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
+whealth.db
+*.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
 
 # Editor directories and files
 .vscode/*

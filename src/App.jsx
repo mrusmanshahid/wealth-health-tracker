@@ -15,12 +15,24 @@ import Watchlist from './components/Watchlist';
 import StockDiscovery from './components/StockDiscovery';
 import InvestableCash from './components/InvestableCash';
 import WealthProjector from './components/WealthProjector';
+import AuthModal from './components/AuthModal';
 
 import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks, fetchSingleStockNews } from './services/stockApi';
 import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist, saveCashData, loadCashData } from './services/storage';
 import { generateForecast, calculateWealthGrowth, calculatePortfolioMetrics } from './utils/forecasting';
 import { generateDemoPortfolio } from './utils/demoData';
 import { convertToUSD, getExchangeRate, fetchExchangeRates } from './services/currencyApi';
+import {
+  fetchMe,
+  getStoredEmail,
+  isLoggedIn,
+  logout as authLogout,
+} from './services/authApi';
+import {
+  buildWorkspace,
+  resolveWorkspaceOnLogin,
+  scheduleCloudSave,
+} from './services/cloudSync';
 
 function App() {
   const [stocks, setStocks] = useState([]);
@@ -49,16 +61,38 @@ function App() {
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [stockNews, setStockNews] = useState({}); // { symbol: latestNewsItem }
+  const [userEmail, setUserEmail] = useState(getStoredEmail());
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const skipNextCloudSave = useRef(false);
 
-  // Load saved data on mount
+  // Load saved data on mount (cloud if logged in, else local)
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const savedPortfolio = loadPortfolio();
-        const savedSettings = loadSettings();
-        const savedWatchlist = loadWatchlist();
-        const savedCashData = loadCashData();
+        let savedPortfolio = loadPortfolio();
+        let savedSettings = loadSettings();
+        let savedWatchlist = loadWatchlist();
+        let savedCashData = loadCashData();
+
+        if (isLoggedIn()) {
+          try {
+            const me = await fetchMe();
+            setUserEmail(me.email);
+            const workspace = await resolveWorkspaceOnLogin();
+            if (workspace) {
+              savedPortfolio = workspace.portfolio || [];
+              savedSettings = workspace.settings || savedSettings;
+              savedWatchlist = workspace.watchlist || [];
+              savedCashData = workspace.cash || savedCashData;
+              skipNextCloudSave.current = true;
+            }
+          } catch (err) {
+            console.error('Session invalid, using local data:', err);
+            authLogout();
+            setUserEmail(null);
+          }
+        }
         
         setSettings(savedSettings);
         setWatchlist(savedWatchlist);
@@ -85,6 +119,58 @@ function App() {
 
     loadData();
   }, []);
+
+  // Debounced cloud sync when logged in
+  useEffect(() => {
+    if (!userEmail || isLoading) return;
+    if (skipNextCloudSave.current) {
+      skipNextCloudSave.current = false;
+      return;
+    }
+    scheduleCloudSave(
+      buildWorkspace({
+        stocks,
+        settings,
+        watchlist,
+        cashBalance,
+        cashTransactions,
+      })
+    );
+  }, [stocks, settings, watchlist, cashBalance, cashTransactions, userEmail, isLoading]);
+
+  const handleAuthSuccess = async (data) => {
+    setUserEmail(data.email);
+    setIsLoading(true);
+    try {
+      const workspace = await resolveWorkspaceOnLogin();
+      skipNextCloudSave.current = true;
+      const portfolio = workspace?.portfolio || [];
+      const nextSettings = workspace?.settings || loadSettings();
+      const nextWatchlist = workspace?.watchlist || [];
+      const nextCash = workspace?.cash || { balance: 0, transactions: [] };
+
+      setSettings(nextSettings);
+      setWatchlist(nextWatchlist);
+      setCashBalance(nextCash.balance || 0);
+      setCashTransactions(nextCash.transactions || []);
+
+      if (portfolio.length > 0) {
+        await refreshStockData(portfolio);
+      } else {
+        setStocks([]);
+        setWealthData([]);
+      }
+    } catch (err) {
+      console.error('Failed to load cloud workspace:', err);
+      setError('Signed in, but failed to load cloud data');
+    }
+    setIsLoading(false);
+  };
+
+  const handleLogout = () => {
+    authLogout();
+    setUserEmail(null);
+  };
 
   // Calculate total monthly contribution from individual stocks
   const totalMonthlyContribution = stocks.reduce((sum, stock) => sum + (stock.monthlyContribution || 0), 0);
@@ -655,6 +741,9 @@ function App() {
           totalReturn={metrics.totalReturn}
           totalReturnPercent={metrics.totalReturnPercent}
           projections={netWorthProjections}
+          userEmail={userEmail}
+          onLoginClick={() => setShowAuthModal(true)}
+          onLogout={handleLogout}
         />
 
         {error && (
@@ -814,6 +903,12 @@ function App() {
           stock={editingStock}
           onClose={() => setEditingStock(null)}
           onSave={handleSaveEdit}
+        />
+
+        <AuthModal
+          isOpen={showAuthModal}
+          onClose={() => setShowAuthModal(false)}
+          onSuccess={handleAuthSuccess}
         />
 
         {/* Footer */}

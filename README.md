@@ -83,31 +83,36 @@ npm start
 
 Uvicorn serves the API and the built React app from `dist` at `http://localhost:8010`.
 
-### Free hosting (Render)
+### Accounts & database
 
-Best free option for this stack: **[Render](https://render.com)** free web service (spins down when idle; first request after sleep can take ~30–60s).
+- **Sign in / Register** in the header saves portfolio, settings, watchlist, and cash to the database.
+- Without login, data still uses browser `localStorage`.
+- Locally, if `DATABASE_URL` is unset, the API uses **SQLite** (`./whealth.db`).
+- For production, use free **[Neon](https://neon.tech)** Postgres and set `DATABASE_URL`.
 
-1. Push this repo to GitHub.
-2. Sign up at [render.com](https://render.com) with GitHub.
-3. **New → Blueprint** (uses [`render.yaml`](render.yaml)), **or** **New → Web Service**:
-   - Runtime: **Docker**
-   - Dockerfile path: `./Dockerfile`
-   - Plan: **Free**
-   - Health check path: `/api/health`
-4. Deploy. Open the `*.onrender.com` URL — UI + API are served together.
+```bash
+cp .env.example .env
+# edit DATABASE_URL + SECRET_KEY, then:
+export $(grep -v '^#' .env | xargs)   # or use your shell’s env loader
+npm run api
+```
 
-Optional env vars:
-- `CORS_ORIGINS=*` (default in blueprint)
-- `PORT` is set by Render automatically
+### Free hosting (Render + Neon)
 
-**Other free-ish options**
-| Host | Notes |
-|------|--------|
-| **Render** (recommended) | Free Docker web service; sleeps when idle |
-| **Fly.io** | Free allowance; needs `flyctl` + card sometimes |
-| **Railway** | Trial credits, not always free long-term |
+1. Create a free Postgres DB at [neon.tech](https://neon.tech) → copy the connection string.
+2. Push this repo to GitHub.
+3. Sign up at [render.com](https://render.com) with GitHub.
+4. **New → Web Service** → Docker → Free plan → health check `/api/health`.
+5. Set env vars on Render:
+   - `DATABASE_URL` = Neon connection string
+   - `SECRET_KEY` = long random string
+   - `CORS_ORIGINS=*`
+6. Deploy and open `*.onrender.com` → Register → your portfolio syncs to the cloud.
 
-Yahoo Finance can be flaky from cloud IPs (rate limits). That is a data-provider limit, not the host.
+**Notes**
+- Render free web services sleep when idle (~30–60s cold start).
+- Render’s own free Postgres is limited/trial; **Neon free** is the better long-term free DB.
+- Yahoo Finance can rate-limit cloud IPs occasionally.
 
 ## Usage
 
@@ -174,7 +179,7 @@ Interactive docs: `http://localhost:8010/docs`
 
 ## Privacy
 
-Portfolio data is stored locally in your browser using localStorage. Stock and currency data are fetched through the FastAPI backend from Yahoo Finance and exchange-rate APIs.
+Without an account, portfolio data stays in your browser (`localStorage`). With **Sign in**, portfolio / settings / watchlist / cash sync to your database account. Stock and currency quotes still go through the FastAPI backend (Yahoo Finance / FX APIs).
 
 ## Roadmap
 

@@ -11,3 +11,7 @@ services:
         value: "10000"
       - key: CORS_ORIGINS
         value: "*"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false

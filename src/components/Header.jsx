@@ -1,10 +1,13 @@
-import { Heart, TrendingUp, TrendingDown, Sparkles } from 'lucide-react';
+import { Heart, LogIn, LogOut, TrendingUp, TrendingDown, Sparkles, User } from 'lucide-react';
 
 export default function Header({ 
   netWorth = 0, 
   totalReturn = 0, 
   totalReturnPercent = 0,
-  projections = null // { sixMonth, oneYear, fiveYear, tenYear }
+  projections = null, // { sixMonth, oneYear, fiveYear, tenYear }
+  userEmail = null,
+  onLoginClick,
+  onLogout,
 }) {
   const isPositive = totalReturn >= 0;
   
@@ -16,16 +19,16 @@ export default function Header({
   
   return (
     <header className="glass-card mb-6 px-6 py-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         {/* Logo & Brand */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 min-w-0">
           <div className="relative">
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-glow/40 to-cyan-400/30 blur-xl rounded-full"></div>
             <div className="relative bg-gradient-to-br from-emerald-glow via-emerald-bright to-cyan-500 p-3 rounded-xl shadow-lg shadow-emerald-glow/20">
               <Heart className="w-7 h-7 text-white fill-white/30" />
             </div>
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-2xl font-extrabold tracking-tight">
               <span className="bg-gradient-to-r from-emerald-bright via-cyan-400 to-emerald-glow bg-clip-text text-transparent">W</span>
               <span className="bg-gradient-to-r from-pearl to-silver bg-clip-text text-transparent">HEALTH</span>
@@ -34,7 +37,8 @@ export default function Header({
           </div>
         </div>
         
-        {/* Net Worth + Projections grouped together */}
+        {/* Net Worth + Projections + Auth */}
+        <div className="flex items-center gap-3">
         <div className="flex items-center gap-0">
           {/* Net Worth Display */}
           {netWorth > 0 && (
@@ -96,6 +100,34 @@ export default function Header({
               ${netWorth.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </span>
           </div>
+        )}
+        </div>
+
+        {userEmail ? (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-silver max-w-[160px]">
+              <User className="w-3.5 h-3.5 text-emerald-bright flex-shrink-0" />
+              <span className="truncate" title={userEmail}>{userEmail}</span>
+            </div>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="btn-secondary flex items-center gap-1.5 text-xs px-2.5 py-1.5"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={onLoginClick}
+            className="btn-primary flex items-center gap-1.5 text-xs px-2.5 py-1.5 flex-shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Sign in</span>
+          </button>
         )}
       </div>
     </header>

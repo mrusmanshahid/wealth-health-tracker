@@ -5,12 +5,18 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load local .env before other backend modules read os.environ
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend.routers import currency, projector, stocks
+from backend.database import init_db
+from backend.routers import auth, currency, projector, stocks, userdata
 
 DIST_DIR = Path(__file__).resolve().parent.parent / "dist"
 
@@ -43,6 +49,13 @@ app.add_middleware(
 app.include_router(stocks.router)
 app.include_router(currency.router)
 app.include_router(projector.router)
+app.include_router(auth.router)
+app.include_router(userdata.router)
+
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
 
 
 @app.get("/api/health")
