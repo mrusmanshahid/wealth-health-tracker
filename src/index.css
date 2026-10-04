@@ -201,4 +201,18 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+}
+
+@layer base {
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
 }

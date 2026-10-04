@@ -219,11 +219,11 @@ export default function InvestableCash({
   }
 
   return (
-    <div className="glass-card p-6 mb-8">
+    <div className="glass-card p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20">
+      <div className="flex items-center justify-between gap-2 mb-4 sm:mb-6">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-3 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 flex-shrink-0">
             <Wallet className="w-6 h-6 text-cyan-400" />
           </div>
           <div>

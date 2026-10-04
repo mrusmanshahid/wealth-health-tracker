@@ -34,9 +34,9 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
   const currencySymbol = currencySymbols[stock.currency] || stock.currency;
 
   return (
-    <div className="glass-card p-5 hover:border-emerald-glow/30 transition-all duration-300 group">
-      <div className="flex items-start justify-between mb-4">
-        <div>
+    <div className="glass-card p-4 sm:p-5 hover:border-emerald-glow/30 transition-all duration-300 group">
+      <div className="flex items-start justify-between gap-2 mb-3 sm:mb-4">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg font-bold text-emerald-bright">{stock.symbol}</span>
             {/* Portfolio Weight Tag */}
@@ -56,27 +56,27 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
               {isPositive ? '+' : ''}{gainPercent.toFixed(1)}%
             </span>
           </div>
-          <p className="text-sm text-steel mt-0.5 truncate max-w-[180px]">{stock.name}</p>
+          <p className="text-sm text-steel mt-0.5 truncate">{stock.name}</p>
         </div>
         
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-0.5 flex-shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
           <button
             onClick={() => onEdit(stock)}
-            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-amber-bright"
+            className="p-2.5 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-amber-bright touch-manipulation"
             title="Edit Position"
           >
             <Edit3 className="w-4 h-4" />
           </button>
           <button
             onClick={() => onViewChart(stock)}
-            className="p-2 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-cyan-400"
+            className="p-2.5 rounded-lg hover:bg-slate-light/50 transition-colors text-steel hover:text-cyan-400 touch-manipulation"
             title="View Details"
           >
             <FileText className="w-4 h-4" />
           </button>
           <button
             onClick={() => onRemove(stock.symbol)}
-            className="p-2 rounded-lg hover:bg-ruby/20 transition-colors text-steel hover:text-ruby-bright"
+            className="p-2.5 rounded-lg hover:bg-ruby/20 transition-colors text-steel hover:text-ruby-bright touch-manipulation"
             title="Remove"
           >
             <Trash2 className="w-4 h-4" />
@@ -214,9 +214,9 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
         </div>
       )}
 
-      {/* Monthly Contribution Growth Chart - Shows on Hover */}
+      {/* Monthly contribution — always visible on mobile, hover-expand on desktop */}
       {stock.monthlyContribution > 0 && (
-        <div className="overflow-hidden transition-all duration-500 ease-out max-h-0 opacity-0 group-hover:max-h-[300px] group-hover:opacity-100">
+        <div className="mt-3 sm:mt-0 sm:overflow-hidden sm:transition-all sm:duration-500 sm:ease-out sm:max-h-0 sm:opacity-0 sm:group-hover:max-h-[300px] sm:group-hover:opacity-100">
           <ContributionGrowthChart 
             stock={stock} 
             monthlyContribution={stock.monthlyContribution} 
@@ -224,16 +224,15 @@ export default function StockCard({ stock, totalPortfolioValue, onRemove, onView
         </div>
       )}
 
-      {/* Show prompt to add contribution if not set - also on hover */}
       {(!stock.monthlyContribution || stock.monthlyContribution === 0) && (
-        <div className="overflow-hidden transition-all duration-300 ease-out max-h-0 opacity-0 group-hover:max-h-[60px] group-hover:opacity-100">
-          <div className="mt-4 pt-4 border-t border-slate-light/20">
+        <div className="mt-3 sm:mt-0 sm:overflow-hidden sm:transition-all sm:duration-300 sm:ease-out sm:max-h-0 sm:opacity-0 sm:group-hover:max-h-[60px] sm:group-hover:opacity-100">
+          <div className="pt-3 border-t border-slate-light/20">
             <button
               onClick={() => onEdit(stock)}
-              className="w-full flex items-center justify-center gap-2 py-2 text-xs text-steel hover:text-amber-bright transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2.5 text-xs text-steel hover:text-amber-bright transition-colors touch-manipulation"
             >
               <PiggyBank className="w-4 h-4" />
-              Add monthly contribution for growth projection
+              Add monthly contribution
             </button>
           </div>
         </div>

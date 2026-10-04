@@ -193,7 +193,7 @@ export default function Watchlist({
   }
 
   return (
-    <div className="glass-card p-6 mb-8">
+    <div className="glass-card p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-xl bg-amber-500/20">

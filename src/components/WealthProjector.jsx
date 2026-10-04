@@ -184,17 +184,16 @@ export default function WealthProjector() {
     ));
 
   return (
-    <div className="glass-card p-5 mb-6">
+    <div className="glass-card p-4 sm:p-5">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-5">
         <div className="flex items-start gap-3">
-          <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500/30 to-sapphire/20">
+          <div className="p-2 rounded-xl bg-gradient-to-br from-emerald-500/30 to-sapphire/20 flex-shrink-0">
             <Calculator className="w-5 h-5 text-emerald-bright" />
           </div>
           <div>
             <h2 className="text-lg font-bold text-pearl">Wealth Projector</h2>
             <p className="text-sm text-steel max-w-xl">
-              Enter your capital, pick a country and risk profile, and see what to buy,
-              which brokers offer it, income, backtest, and outlook.
+              Pick capital, country, and risk — see what to buy, brokers, income, and outlook.
             </p>
           </div>
         </div>
@@ -657,12 +656,102 @@ export default function WealthProjector() {
             </div>
           )}
 
-          {/* Allocation table */}
-          <div className="mb-5 overflow-x-auto">
+          {/* Allocation — cards on mobile, table on desktop */}
+          <div className="mb-5">
             <p className="text-xs uppercase tracking-wide text-steel mb-2">
               Suggested investments
               {result.country?.name ? ` · ${result.country.name}` : ''}
             </p>
+
+            <div className="md:hidden space-y-3">
+              {result.allocationPlan.map((row) => {
+                const usingAlt = Boolean(row.usingAlternate && row.access?.alternative);
+                const buySymbol = usingAlt
+                  ? row.displaySymbol || row.access.alternative.symbol
+                  : row.symbol;
+                const buyName = usingAlt
+                  ? row.displayName || row.access.alternative.name
+                  : row.name;
+                const price = usingAlt ? row.displayPrice : row.price;
+                const shares = usingAlt ? row.displayShares : row.shares;
+                const income = usingAlt
+                  ? row.displayAnnualIncome ?? row.expectedAnnualIncome
+                  : row.expectedAnnualIncome;
+                const yieldPct = usingAlt
+                  ? row.displayYieldPercent ?? row.expectedYieldPercent
+                  : row.expectedYieldPercent;
+                const showPrice =
+                  row.kind !== 'savings' && price != null && Number(price) > 0;
+                const brokers =
+                  row.access?.brokers?.length > 0
+                    ? row.access.brokers.map((b) => b.name).join(', ')
+                    : usingAlt
+                      ? 'Use local / UCITS listing'
+                      : 'Check your broker';
+
+                return (
+                  <div
+                    key={`m-${row.kind}-${row.symbol}`}
+                    className="rounded-xl border border-slate-light/20 bg-slate-dark/40 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-semibold text-pearl">{buySymbol}</span>
+                          {row.access && <AccessBadge status={row.access.status} />}
+                          <span className="text-[10px] text-steel">{row.percent}%</span>
+                        </div>
+                        <p className="text-[11px] text-steel truncate">{buyName}</p>
+                        {usingAlt && (
+                          <p className="text-[10px] text-amber-bright mt-0.5">
+                            Alternate for {row.originalSymbol || row.symbol}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
+                        <p className="text-[10px] text-steel">{row.role}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="text-[10px] text-steel uppercase">Price</p>
+                        <p className="font-mono text-pearl">
+                          {!showPrice
+                            ? '—'
+                            : `$${Number(price).toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}`}
+                        </p>
+                        {showPrice && shares != null && (
+                          <p className="text-[10px] text-steel">
+                            ~{Number(shares).toLocaleString(undefined, {
+                              maximumFractionDigits: 2,
+                            })}{' '}
+                            sh
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-steel uppercase">Est. income</p>
+                        <p className="font-mono text-emerald-bright">{formatMoney(income)}</p>
+                        <p className="text-[10px] text-steel">
+                          {yieldPct}% ·{' '}
+                          {row.incomeType === 'interest' ? 'interest' : 'dividend'}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-silver mt-2 pt-2 border-t border-slate-light/10">
+                      <Landmark className="w-3 h-3 inline mr-1 text-steel" />
+                      {brokers}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="text-left text-[11px] uppercase text-steel border-b border-slate-light/20">
@@ -761,15 +850,16 @@ export default function WealthProjector() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {/* Chart */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
               <p className="text-xs uppercase tracking-wide text-steel">
                 Backtest (~{result.backtest?.years || 10}y) + 5y prospects
               </p>
-              <div className="flex gap-3 text-[11px] text-steel">
+              <div className="flex flex-wrap gap-3 text-[11px] text-steel">
                 <span className="flex items-center gap-1">
                   <span className="w-3 h-0.5 bg-emerald-bright inline-block" /> Historical
                 </span>

@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Settings, Loader2, RefreshCw } from 'lucide-react';
 
 import Header from './components/Header';
+import TabNav from './components/TabNav';
 import StatsCards from './components/StatsCards';
 import StockCard from './components/StockCard';
 import WealthChart from './components/WealthChart';
@@ -63,7 +64,13 @@ function App() {
   const [stockNews, setStockNews] = useState({}); // { symbol: latestNewsItem }
   const [userEmail, setUserEmail] = useState(getStoredEmail());
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [activeTab, setActiveTab] = useState('portfolio');
   const skipNextCloudSave = useRef(false);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // Load saved data on mount (cloud if logged in, else local)
   useEffect(() => {
@@ -174,89 +181,6 @@ function App() {
 
   // Calculate total monthly contribution from individual stocks
   const totalMonthlyContribution = stocks.reduce((sum, stock) => sum + (stock.monthlyContribution || 0), 0);
-
-  // Calculate 5-year projections for net worth
-  const netWorthProjections = useMemo(() => {
-    if (stocks.length === 0 || !wealthData || wealthData.length === 0) return null;
-    
-    const currentValue = metrics.currentValue + cashBalance;
-    const monthlyContribution = totalMonthlyContribution;
-    
-    // Calculate growth rates from historical data
-    const historicalData = wealthData.filter(d => !d.isForecast && d.value > 0);
-    if (historicalData.length < 6) {
-      // Default rates if not enough history
-      const defaultRates = { sixMonth: 0.08, oneYear: 0.08, fiveYear: 0.10, tenYear: 0.10 };
-      return calculateProjections(currentValue, monthlyContribution, defaultRates, cashBalance);
-    }
-    
-    const MIN_RATE = -0.15;
-    const MAX_RATE = 0.35;
-    
-    // Helper to calculate median monthly returns
-    const calcMedianGrowth = (data) => {
-      if (data.length < 2) return 0.08;
-      const monthlyReturns = [];
-      for (let i = 1; i < data.length; i++) {
-        if (data[i - 1].value > 0) {
-          const ret = (data[i].value - data[i - 1].value) / data[i - 1].value;
-          if (ret > -0.20 && ret < 0.20) monthlyReturns.push(ret);
-        }
-      }
-      if (monthlyReturns.length === 0) return 0.08;
-      monthlyReturns.sort((a, b) => a - b);
-      const mid = Math.floor(monthlyReturns.length / 2);
-      const median = monthlyReturns.length % 2 === 0
-        ? (monthlyReturns[mid - 1] + monthlyReturns[mid]) / 2
-        : monthlyReturns[mid];
-      return Math.max(MIN_RATE, Math.min(MAX_RATE, median * 12));
-    };
-    
-    const recent6 = historicalData.slice(-6);
-    const recent12 = historicalData.slice(-12);
-    const recent60 = historicalData.slice(-60);
-    
-    const rates = {
-      sixMonth: calcMedianGrowth(recent6),
-      oneYear: calcMedianGrowth(recent12),
-      fiveYear: calcMedianGrowth(recent60),
-      tenYear: calcMedianGrowth(historicalData),
-    };
-    
-    return calculateProjections(currentValue, monthlyContribution, rates, cashBalance);
-  }, [stocks, wealthData, metrics.currentValue, cashBalance, totalMonthlyContribution]);
-  
-  // Helper function to calculate projections
-  function calculateProjections(currentValue, monthlyContribution, rates, cash) {
-    const months = 60; // 5 years
-    
-    let sixMonthValue = currentValue;
-    let oneYearValue = currentValue;
-    let fiveYearValue = currentValue;
-    let tenYearValue = currentValue;
-    
-    const sixMonthRate = rates.sixMonth / 12;
-    const oneYearRate = rates.oneYear / 12;
-    const fiveYearRate = rates.fiveYear / 12;
-    const tenYearRate = rates.tenYear / 12;
-    
-    for (let i = 1; i <= months; i++) {
-      // Apply growth (only to invested portion, not cash)
-      const investedPortion = currentValue - cash;
-      sixMonthValue = (sixMonthValue - cash) * (1 + sixMonthRate) + cash + monthlyContribution;
-      oneYearValue = (oneYearValue - cash) * (1 + oneYearRate) + cash + monthlyContribution;
-      fiveYearValue = (fiveYearValue - cash) * (1 + fiveYearRate) + cash + monthlyContribution;
-      tenYearValue = (tenYearValue - cash) * (1 + tenYearRate) + cash + monthlyContribution;
-    }
-    
-    return {
-      sixMonth: Math.round(sixMonthValue),
-      oneYear: Math.round(oneYearValue),
-      fiveYear: Math.round(fiveYearValue),
-      tenYear: Math.round(tenYearValue),
-      rates,
-    };
-  }
 
   // Recalculate wealth when stocks or settings change
   useEffect(() => {
@@ -727,150 +651,160 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pb-[calc(4.5rem+env(safe-area-inset-bottom))] sm:pb-8">
       {/* Background decorations */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-emerald-glow/5 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-sapphire/5 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-violet/5 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute top-0 left-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-emerald-glow/5 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-72 h-72 sm:w-96 sm:h-96 bg-sapphire/5 rounded-full blur-3xl"></div>
       </div>
 
-      <div className="relative max-w-7xl mx-auto px-4 py-8">
-        <Header 
+      <div className="relative max-w-7xl mx-auto px-3 sm:px-4 pt-1 sm:pt-4">
+        <Header
           netWorth={metrics.currentValue + cashBalance}
           totalReturn={metrics.totalReturn}
           totalReturnPercent={metrics.totalReturnPercent}
-          projections={netWorthProjections}
           userEmail={userEmail}
           onLoginClick={() => setShowAuthModal(true)}
           onLogout={handleLogout}
         />
 
+        <TabNav activeTab={activeTab} onChange={handleTabChange} />
+
         {error && (
-          <div className="mb-6 p-4 glass-card border-ruby/30 bg-ruby/10">
-            <p className="text-ruby-bright">{error}</p>
-            <button 
+          <div className="mb-4 p-3 sm:p-4 glass-card border-ruby/30 bg-ruby/10">
+            <p className="text-ruby-bright text-sm">{error}</p>
+            <button
               onClick={() => setError(null)}
-              className="text-sm text-steel hover:text-pearl mt-2"
+              className="text-sm text-steel hover:text-pearl mt-2 touch-manipulation"
             >
               Dismiss
             </button>
           </div>
         )}
 
-        {stocks.length === 0 ? (
-          <EmptyState 
-            onAddStock={() => setShowAddModal(true)} 
-            onLoadDemo={handleLoadDemo}
-          />
-        ) : (
+        {activeTab === 'portfolio' && (
           <>
-            {/* Unified Dashboard Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-6">
-              {/* Left: Stats + Chart stacked */}
-              <div className="lg:col-span-3 space-y-0">
-                {/* Stats Cards - no bottom margin, connected to chart */}
-                <StatsCards metrics={metrics} />
-                {/* Wealth Chart - connected below stats */}
-                <div className="mt-2">
-                  <WealthChart 
-                    wealthData={wealthData} 
+            {stocks.length === 0 ? (
+              <EmptyState
+                onAddStock={() => setShowAddModal(true)}
+                onLoadDemo={handleLoadDemo}
+              />
+            ) : (
+              <>
+                <div className="mb-4 space-y-2">
+                  <StatsCards metrics={metrics} />
+                  <WealthChart
+                    wealthData={wealthData}
                     monthlyContribution={totalMonthlyContribution}
                   />
                 </div>
-              </div>
-              
-              {/* Right Sidebar: Cash + Watchlist stacked */}
-              <div className="lg:col-span-1 flex flex-col gap-4">
-                <InvestableCash
-                  cashBalance={cashBalance}
-                  cashTransactions={cashTransactions}
-                  onAddCash={handleAddCash}
-                  onWithdrawCash={handleWithdrawCash}
-                  portfolioStocks={stocks}
-                  watchlistStocks={watchlist}
-                  undervaluedStocks={undervaluedStocks}
-                  onBuyStock={handleAddFromDiscovery}
-                  compact={true}
-                />
-                <div className="flex-1">
-                  <Watchlist
-                    watchlist={watchlist}
-                    onAddToWatchlist={handleAddToWatchlist}
-                    onRemoveFromWatchlist={handleRemoveFromWatchlist}
-                    onAddToPortfolio={handleAddFromWatchlist}
-                    compact={true}
-                  />
-                </div>
-              </div>
-            </div>
 
-            {/* Holdings Grid */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <h2 className="text-xl font-bold text-pearl">Your Holdings ({stocks.length})</h2>
-                  <button
-                    onClick={handleRefresh}
-                    disabled={isRefreshing}
-                    className="p-1.5 rounded-lg hover:bg-slate-light/30 text-steel hover:text-emerald-bright transition-colors disabled:opacity-50"
-                    title="Refresh prices"
-                  >
-                    <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  </button>
-                  {lastRefresh && (
-                    <span className="text-xs text-steel">
-                      Updated {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowSettings(true)}
-                    className="btn-secondary flex items-center gap-2"
-                  >
-                    <Settings className="w-4 h-4" />
-                    <span className="hidden sm:inline">Settings</span>
-                  </button>
-                  <button
-                    onClick={() => setShowAddModal(true)}
-                    className="btn-primary flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span className="hidden sm:inline">Add Stock</span>
-                  </button>
-                </div>
-              </div>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h2 className="text-lg sm:text-xl font-bold text-pearl truncate">
+                        Holdings ({stocks.length})
+                      </h2>
+                      <button
+                        onClick={handleRefresh}
+                        disabled={isRefreshing}
+                        className="p-2 rounded-lg hover:bg-slate-light/30 text-steel hover:text-emerald-bright transition-colors disabled:opacity-50 touch-manipulation"
+                        title="Refresh prices"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      </button>
+                      {lastRefresh && (
+                        <span className="text-[11px] text-steel hidden xs:inline sm:inline">
+                          {lastRefresh.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setShowSettings(true)}
+                        className="btn-secondary flex items-center gap-2 px-3 py-2 min-h-[40px]"
+                      >
+                        <Settings className="w-4 h-4" />
+                        <span className="hidden sm:inline">Settings</span>
+                      </button>
+                      <button
+                        onClick={() => setShowAddModal(true)}
+                        className="btn-primary flex items-center gap-2 px-3 py-2 min-h-[40px]"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span className="hidden sm:inline">Add</span>
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                {stocks.map((stock) => (
-                  <StockCard
-                    key={stock.symbol}
-                    stock={stock}
-                    totalPortfolioValue={metrics.currentValue}
-                    onRemove={handleRemoveStock}
-                    onViewChart={handleViewChart}
-                    onEdit={handleEditStock}
-                    latestNews={stockNews[stock.symbol]}
-                  />
-                ))}
-              </div>
-            </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+                    {stocks.map((stock) => (
+                      <StockCard
+                        key={stock.symbol}
+                        stock={stock}
+                        totalPortfolioValue={metrics.currentValue}
+                        onRemove={handleRemoveStock}
+                        onViewChart={handleViewChart}
+                        onEdit={handleEditStock}
+                        latestNews={stockNews[stock.symbol]}
+                      />
+                    ))}
+                  </div>
+                </div>
 
-            {/* News Section */}
-            <NewsSection symbols={stocks.map(s => s.symbol)} />
+                <NewsSection symbols={stocks.map((s) => s.symbol)} />
+              </>
+            )}
           </>
         )}
 
-        {/* Always available planning tools */}
-        <WealthProjector />
+        {activeTab === 'cash' && (
+          <InvestableCash
+            cashBalance={cashBalance}
+            cashTransactions={cashTransactions}
+            onAddCash={handleAddCash}
+            onWithdrawCash={handleWithdrawCash}
+            portfolioStocks={stocks}
+            watchlistStocks={watchlist}
+            undervaluedStocks={undervaluedStocks}
+            onBuyStock={handleAddFromDiscovery}
+            compact={false}
+          />
+        )}
 
-        <StockDiscovery
-          portfolioSymbols={stocks.map(s => s.symbol)}
-          watchlistSymbols={watchlist.map(w => w.symbol)}
-          onAddToWatchlist={handleAddToWatchlist}
-          onAddToPortfolio={handleAddFromDiscovery}
-        />
+        {activeTab === 'watchlist' && (
+          <Watchlist
+            watchlist={watchlist}
+            onAddToWatchlist={handleAddToWatchlist}
+            onRemoveFromWatchlist={handleRemoveFromWatchlist}
+            onAddToPortfolio={handleAddFromWatchlist}
+            compact={false}
+          />
+        )}
+
+        {activeTab === 'discover' && (
+          <StockDiscovery
+            portfolioSymbols={stocks.map((s) => s.symbol)}
+            watchlistSymbols={watchlist.map((w) => w.symbol)}
+            onAddToWatchlist={handleAddToWatchlist}
+            onAddToPortfolio={handleAddFromDiscovery}
+          />
+        )}
+
+        {activeTab === 'project' && <WealthProjector />}
+
+        {/* Floating add on portfolio (mobile) */}
+        {activeTab === 'portfolio' && stocks.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="sm:hidden fixed right-4 z-30 btn-primary rounded-full w-14 h-14 flex items-center justify-center shadow-lg shadow-emerald-glow/30 touch-manipulation"
+            style={{ bottom: 'calc(4.75rem + env(safe-area-inset-bottom))' }}
+            aria-label="Add stock"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        )}
 
         {/* Modals */}
         <AddStockModal
@@ -911,14 +845,11 @@ function App() {
           onSuccess={handleAuthSuccess}
         />
 
-        {/* Footer */}
-        <footer className="mt-12 text-center text-sm text-steel">
+        <footer className="mt-8 mb-4 text-center text-[11px] sm:text-sm text-steel px-2">
           <p>
-            Stock data provided by Yahoo Finance • Forecasts are estimates based on historical performance
+            Yahoo Finance data · Forecasts are estimates
           </p>
-          <p className="mt-1">
-            Past performance does not guarantee future results
-          </p>
+          <p className="mt-1">Past performance does not guarantee future results</p>
         </footer>
       </div>
     </div>
