@@ -8,12 +8,24 @@ from collections.abc import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
+def _normalize_database_url(url: str) -> str:
+    """Force the psycopg2 driver we ship in requirements.txt.
+
+    Neon / SQLAlchemy may hand out postgres:// or postgresql+psycopg:// (v3).
+    """
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://") :]
+    if url.startswith("postgresql+psycopg://"):
+        url = "postgresql+psycopg2://" + url[len("postgresql+psycopg://") :]
+    elif url.startswith("postgresql://"):
+        url = "postgresql+psycopg2://" + url[len("postgresql://") :]
+    return url
+
+
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 if DATABASE_URL:
-    # Neon / Render sometimes provide postgres:// — SQLAlchemy wants postgresql://
-    if DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = _normalize_database_url(DATABASE_URL)
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
