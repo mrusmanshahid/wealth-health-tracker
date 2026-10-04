@@ -282,16 +282,19 @@ def _backtest_portfolio(
 
 def _estimate_yield(symbol: str) -> float:
     """
-    Return annual yield as a fraction (0.004 = 0.4%).
+    Return annual cash yield as a fraction (0.004 = 0.4%).
 
     Yahoo's `dividendYield` is often percent-points (0.32 means 0.32%), while
     `trailingAnnualDividendYield` / `yield` are usually true fractions.
     Prefer rate÷price when available.
     """
+    if not symbol or not _looks_like_ticker(symbol):
+        return 0.0
     try:
         import yfinance as yf
 
-        info = yf.Ticker(symbol).info or {}
+        ticker = yf.Ticker(symbol)
+        info = ticker.info or {}
         price = float(info.get("regularMarketPrice") or info.get("currentPrice") or 0)
 
         def sane(y: float) -> float | None:
@@ -330,13 +333,86 @@ def _estimate_yield(symbol: str) -> float:
         # 4) Yahoo `dividendYield` is typically percent-points (0.32 = 0.32%, 3 = 3%)
         dy = info.get("dividendYield")
         if dy is not None:
-            got = sane(float(dy) / 100.0)
+            y = float(dy)
+            # Some Yahoo rows already return a fraction for this field
+            got = sane(y / 100.0 if y > 0.25 else y)
             if got is not None:
                 return got
+
+        # 5) Last 12 months dividends from history / price
+        try:
+            divs = ticker.dividends
+            if divs is not None and len(divs) and price > 0:
+                import pandas as pd
+
+                cutoff = pd.Timestamp.now(tz="UTC") - pd.DateOffset(years=1)
+                series = divs.copy()
+                if getattr(series.index, "tz", None) is not None:
+                    series.index = series.index.tz_convert("UTC")
+                    cutoff = cutoff.tz_convert("UTC")
+                else:
+                    cutoff = cutoff.tz_localize(None)
+                trailing = float(series[series.index >= cutoff].sum())
+                got = sane(trailing / price)
+                if got is not None:
+                    return got
+        except Exception:
+            pass
 
         return 0.0
     except Exception:
         return 0.0
+
+
+# Rough cash-yield fallbacks when Yahoo returns empty for known distributing UCITS
+_YIELD_FALLBACKS = {
+    "VHYL.DE": 0.028,
+    "VHYL.L": 0.028,
+    "VHYD.L": 0.028,
+    "VGWL.DE": 0.022,
+    "VUSA.L": 0.012,
+    "VFV.TO": 0.012,
+}
+
+
+def _yield_for_symbol(symbol: str, fallback_symbol: str | None = None) -> float:
+    yld = _estimate_yield(symbol)
+    if yld > 0:
+        return yld
+    if symbol in _YIELD_FALLBACKS:
+        return _YIELD_FALLBACKS[symbol]
+    if fallback_symbol and fallback_symbol != symbol:
+        yld = _estimate_yield(fallback_symbol)
+        if yld > 0:
+            return yld
+    return 0.0
+
+
+def _is_accumulating(symbol: str, name: str) -> bool:
+    blob = f"{symbol} {name}".lower()
+    return any(
+        tok in blob
+        for tok in (
+            " accumul",
+            "(acc)",
+            " acc ",
+            " acc.",
+            "-acc",
+            ".acc",
+            "acc ucits",
+            "accumulation",
+        )
+    ) or symbol.upper().endswith(".ACC")
+
+
+def _income_type_for(kind: str, symbol: str, name: str, yld: float) -> str:
+    if kind in ("savings", "overnight"):
+        return "interest"
+    if _is_accumulating(symbol, name):
+        return "accumulating"
+    if yld <= 0:
+        return "none"
+    return "dividend"
 
 
 def _looks_like_ticker(symbol: str | None) -> bool:
@@ -513,27 +589,29 @@ def _project_sync(
     dividend_income = 0.0
     interest_income = 0.0
 
-    # Savings sleeve → interest
+    # Savings sleeve → country overnight product (Tagesgeld, HYSA, …)
     if savings_budget > 0:
+        local = markets.resolve_local_instrument("HYSA", country_code)
         annual_income_savings = savings_budget * SAVINGS_ANNUAL_RATE
         interest_income += annual_income_savings
-        access = markets.resolve_access("HYSA", country_code)
         allocation_plan.append(
             {
                 "kind": "savings",
-                "symbol": "HYSA",
-                "name": "High-yield savings",
+                "symbol": local["symbol"],
+                "name": local["name"] or "Overnight / savings",
                 "role": "Cash / emergency buffer",
                 "amount": round(savings_budget, 2),
                 "percent": round(alloc["savings"] * 100, 1),
+                "price": None,
+                "shares": None,
                 "expectedYieldPercent": round(SAVINGS_ANNUAL_RATE * 100, 2),
                 "expectedAnnualIncome": round(annual_income_savings, 2),
                 "incomeType": "interest",
-                "access": access,
+                "access": local["access"],
             }
         )
         sleeves.append(
-            {"symbol": "HYSA", "amount": savings_budget, "kind": "savings"}
+            {"symbol": local["symbol"], "amount": savings_budget, "kind": "savings"}
         )
 
     for kind, budget in (("stocks", stock_budget), ("etfs", etf_budget)):
@@ -541,50 +619,55 @@ def _project_sync(
             amount = budget * h["weight"]
             if amount <= 0:
                 continue
-            try:
-                quote = _quote_sync(h["symbol"])
-                name = quote.get("name") or h["symbol"]
-                price = quote.get("price") or 0
-            except Exception:
-                name = h["symbol"]
-                price = 0
-            yld = _estimate_yield(h["symbol"])
+            template_symbol = h["symbol"]
+            local = markets.resolve_local_instrument(template_symbol, country_code)
+            symbol = local["symbol"]
+            kind_row = "savings" if local.get("kindHint") == "savings" else (
+                kind[:-1] if kind.endswith("s") else kind
+            )
+
+            price = 0.0
+            name = local.get("name") or symbol
+            if _looks_like_ticker(symbol):
+                try:
+                    quote = _quote_sync(symbol)
+                    name = quote.get("name") or name
+                    price = float(quote.get("price") or 0)
+                except Exception:
+                    pass
+                if _is_accumulating(symbol, name):
+                    # Acc share classes reinvest — cash yield is 0 by design
+                    yld = 0.0
+                else:
+                    # Local listing yield; template ticker only as fallback for distributors
+                    yld = _yield_for_symbol(symbol, fallback_symbol=template_symbol)
+            else:
+                yld = SAVINGS_ANNUAL_RATE if kind_row == "savings" else 0.0
+
             income = amount * yld
-            dividend_income += income
-            access = markets.resolve_access(h["symbol"], country_code)
+            income_type = _income_type_for(kind_row, symbol, name, yld)
+            if income_type == "interest":
+                interest_income += income
+            else:
+                dividend_income += income
+
             allocation_plan.append(
                 {
-                    "kind": kind[:-1] if kind.endswith("s") else kind,  # stock/etf
-                    "symbol": h["symbol"],
+                    "kind": kind_row,
+                    "symbol": symbol,
                     "name": name,
                     "role": h["role"],
                     "amount": round(amount, 2),
                     "percent": round((amount / capital) * 100, 1),
-                    "price": price,
+                    "price": price or None,
                     "shares": round(amount / price, 4) if price else None,
                     "expectedYieldPercent": round(yld * 100, 2),
                     "expectedAnnualIncome": round(income, 2),
-                    "incomeType": "dividend",
-                    "access": access,
+                    "incomeType": income_type,
+                    "access": local["access"],
                 }
             )
-            sleeves.append({"symbol": h["symbol"], "amount": amount, "kind": kind[:-1]})
-
-    # Enrich alternates, then promote country-local tickers as the primary buy
-    for row in allocation_plan:
-        _enrich_alternate_quote(row)
-        _promote_country_local(row)
-
-    # Rebuild sleeves using localized symbols for backtest when available
-    sleeves = []
-    for row in allocation_plan:
-        sleeves.append(
-            {
-                "symbol": row.get("symbol") or "HYSA",
-                "amount": float(row.get("amount") or 0),
-                "kind": row.get("kind") or "etf",
-            }
-        )
+            sleeves.append({"symbol": symbol, "amount": amount, "kind": kind_row})
 
     backtest = _backtest_portfolio(capital, sleeves, SAVINGS_ANNUAL_RATE)
 

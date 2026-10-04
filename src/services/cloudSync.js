@@ -1,14 +1,14 @@
 import { fetchWorkspace, isLoggedIn, saveWorkspace } from './authApi';
 import {
+  clearWorkspaceLocal,
+  defaultInvestmentPlans,
   loadCashData,
+  loadInvestmentPlans,
   loadPortfolio,
   loadSettings,
   loadWatchlist,
   normalizeCashData,
-  saveCashData,
-  savePortfolio,
-  saveSettings,
-  saveWatchlist,
+  normalizeInvestmentPlans,
 } from './storage';
 
 let saveTimer = null;
@@ -20,8 +20,8 @@ export function buildWorkspace({
   cashBalance,
   cashAccounts,
   cashTransactions,
+  plans,
 }) {
-  // Strip heavy/live fields before saving
   const portfolio = (stocks || []).map((stock) => ({
     symbol: stock.symbol,
     name: stock.name,
@@ -37,50 +37,76 @@ export function buildWorkspace({
     addedAt: stock.addedAt,
   }));
 
+  const cash = normalizeCashData({
+    balance: cashBalance || 0,
+    accounts: cashAccounts || [],
+    transactions: cashTransactions || [],
+  });
+
   return {
     portfolio,
     settings: settings || { currency: 'USD', forecastYears: 5 },
     watchlist: watchlist || [],
-    cash: {
-      balance: cashBalance || 0,
-      accounts: cashAccounts || [],
-      transactions: cashTransactions || [],
-    },
+    cash,
+    plans: normalizeInvestmentPlans(plans || defaultInvestmentPlans()),
+  };
+}
+
+function workspaceHasData(ws) {
+  if (!ws) return false;
+  const cash = normalizeCashData(ws.cash || {});
+  const plans = normalizeInvestmentPlans(ws.plans || {});
+  return (
+    (ws.portfolio || []).length > 0 ||
+    (ws.watchlist || []).length > 0 ||
+    cash.balance > 0 ||
+    (plans.funded || []).length > 0 ||
+    (plans.customSleeves || []).some((s) => s.symbol)
+  );
+}
+
+function localHasLegacyData() {
+  return (
+    loadPortfolio().length > 0 ||
+    loadWatchlist().length > 0 ||
+    (loadCashData().balance || 0) > 0 ||
+    (loadInvestmentPlans().funded || []).length > 0
+  );
+}
+
+/**
+ * Load workspace from DB. One-time: if cloud is empty but legacy localStorage
+ * has data, upload it, then always clear local workspace keys.
+ */
+export async function resolveWorkspaceOnLogin() {
+  const cloud = await fetchWorkspace();
+
+  if (!workspaceHasData(cloud) && localHasLegacyData()) {
+    const payload = {
+      portfolio: loadPortfolio(),
+      settings: loadSettings(),
+      watchlist: loadWatchlist(),
+      cash: normalizeCashData(loadCashData()),
+      plans: normalizeInvestmentPlans(loadInvestmentPlans()),
+    };
+    const uploaded = await saveWorkspace(payload);
+    clearWorkspaceLocal();
+    return uploaded;
+  }
+
+  clearWorkspaceLocal();
+  return {
+    portfolio: cloud?.portfolio || [],
+    settings: cloud?.settings || { currency: 'USD', forecastYears: 5 },
+    watchlist: cloud?.watchlist || [],
+    cash: normalizeCashData(cloud?.cash || {}),
+    plans: normalizeInvestmentPlans(cloud?.plans || {}),
   };
 }
 
 export async function loadUserWorkspace() {
   if (!isLoggedIn()) return null;
   return fetchWorkspace();
-}
-
-/** Merge strategy on login: prefer cloud if it has portfolio; else keep local and upload. */
-export async function resolveWorkspaceOnLogin() {
-  const cloud = await fetchWorkspace();
-  const localPortfolio = loadPortfolio();
-  const cloudPortfolio = cloud?.portfolio || [];
-
-  if (cloudPortfolio.length > 0) {
-    // Prefer cloud
-    savePortfolio(cloudPortfolio);
-    if (cloud.settings) saveSettings(cloud.settings);
-    if (cloud.watchlist) saveWatchlist(cloud.watchlist);
-    if (cloud.cash) saveCashData(normalizeCashData(cloud.cash));
-    return cloud;
-  }
-
-  // Upload local if present
-  if (localPortfolio.length > 0 || (loadCashData().balance || 0) > 0 || loadWatchlist().length > 0) {
-    const payload = {
-      portfolio: localPortfolio,
-      settings: loadSettings(),
-      watchlist: loadWatchlist(),
-      cash: normalizeCashData(loadCashData()),
-    };
-    return saveWorkspace(payload);
-  }
-
-  return cloud;
 }
 
 export function scheduleCloudSave(workspace, delayMs = 800) {

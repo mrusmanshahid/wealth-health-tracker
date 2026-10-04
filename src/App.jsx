@@ -20,16 +20,11 @@ import AuthModal from './components/AuthModal';
 
 import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks, fetchSingleStockNews } from './services/stockApi';
 import {
-  savePortfolio,
-  loadPortfolio,
-  saveSettings,
-  loadSettings,
-  saveWatchlist,
-  loadWatchlist,
-  saveCashData,
-  loadCashData,
   createCashAccount,
   normalizeCashData,
+  defaultInvestmentPlans,
+  normalizeInvestmentPlans,
+  clearWorkspaceLocal,
 } from './services/storage';
 import {
   generateAnalystProjection,
@@ -75,8 +70,9 @@ function App() {
   const [watchlist, setWatchlist] = useState([]);
   const [prefillStock, setPrefillStock] = useState(null);
   const [cashBalance, setCashBalance] = useState(0);
-  const [cashAccounts, setCashAccounts] = useState([]);
+  const [cashAccounts, setCashAccounts] = useState(() => normalizeCashData({}).accounts);
   const [cashTransactions, setCashTransactions] = useState([]);
+  const [investmentPlans, setInvestmentPlans] = useState(() => defaultInvestmentPlans());
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
   const [lastRefresh, setLastRefresh] = useState(null);
   const [stockNews, setStockNews] = useState({}); // { symbol: latestNewsItem }
@@ -90,15 +86,20 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Load saved data on mount (cloud if logged in, else local)
+  // Load workspace from DB when signed in (localStorage is not the source of truth)
   useEffect(() => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        let savedPortfolio = loadPortfolio();
-        let savedSettings = loadSettings();
-        let savedWatchlist = loadWatchlist();
-        let savedCashData = loadCashData();
+        let savedPortfolio = [];
+        let savedSettings = {
+          currency: 'USD',
+          forecastYears: 5,
+          riskTolerance: 'moderate',
+        };
+        let savedWatchlist = [];
+        let savedCashData = normalizeCashData({});
+        let savedPlans = defaultInvestmentPlans();
 
         if (isLoggedIn()) {
           try {
@@ -109,30 +110,33 @@ function App() {
               savedPortfolio = workspace.portfolio || [];
               savedSettings = workspace.settings || savedSettings;
               savedWatchlist = workspace.watchlist || [];
-              savedCashData = workspace.cash || savedCashData;
+              savedCashData = normalizeCashData(workspace.cash || {});
+              savedPlans = normalizeInvestmentPlans(workspace.plans || {});
               skipNextCloudSave.current = true;
             }
           } catch (err) {
-            console.error('Session invalid, using local data:', err);
+            console.error('Session invalid:', err);
             authLogout();
+            clearWorkspaceLocal();
             setUserEmail(null);
+            setShowAuthModal(true);
           }
+        } else {
+          // Discard any leftover browser cache — persistence requires sign-in
+          clearWorkspaceLocal();
         }
-        
+
         setSettings(savedSettings);
         setWatchlist(savedWatchlist);
-        {
-          const cash = normalizeCashData(savedCashData);
-          setCashAccounts(cash.accounts);
-          setCashBalance(cash.balance);
-          setCashTransactions(cash.transactions);
-        }
+        setInvestmentPlans(savedPlans);
+        setCashAccounts(savedCashData.accounts);
+        setCashBalance(savedCashData.balance);
+        setCashTransactions(savedCashData.transactions);
 
         if (savedPortfolio.length > 0) {
           await refreshStockData(savedPortfolio);
         }
 
-        // Load undervalued stocks for suggestions
         try {
           const undervalued = await fetchUndervaluedStocks();
           setUndervaluedStocks(undervalued);
@@ -149,7 +153,7 @@ function App() {
     loadData();
   }, []);
 
-  // Debounced cloud sync when logged in
+  // Debounced cloud sync when logged in — DB is the only persistence
   useEffect(() => {
     if (!userEmail || isLoading) return;
     if (skipNextCloudSave.current) {
@@ -164,9 +168,21 @@ function App() {
         cashBalance,
         cashAccounts,
         cashTransactions,
+        plans: investmentPlans,
       })
     );
-  }, [stocks, settings, watchlist, cashBalance, cashAccounts, cashTransactions, userEmail, isLoading]);
+  }, [
+    stocks,
+    settings,
+    watchlist,
+    cashBalance,
+    cashAccounts,
+    cashTransactions,
+    investmentPlans,
+    userEmail,
+    isLoading,
+  ]);
+
 
   const handleAuthSuccess = async (data) => {
     setUserEmail(data.email);
@@ -175,15 +191,21 @@ function App() {
       const workspace = await resolveWorkspaceOnLogin();
       skipNextCloudSave.current = true;
       const portfolio = workspace?.portfolio || [];
-      const nextSettings = workspace?.settings || loadSettings();
+      const nextSettings = workspace?.settings || {
+        currency: 'USD',
+        forecastYears: 5,
+        riskTolerance: 'moderate',
+      };
       const nextWatchlist = workspace?.watchlist || [];
       const nextCash = normalizeCashData(workspace?.cash || {});
+      const nextPlans = normalizeInvestmentPlans(workspace?.plans || {});
 
       setSettings(nextSettings);
       setWatchlist(nextWatchlist);
       setCashAccounts(nextCash.accounts);
       setCashBalance(nextCash.balance);
       setCashTransactions(nextCash.transactions);
+      setInvestmentPlans(nextPlans);
 
       if (portfolio.length > 0) {
         await refreshStockData(portfolio);
@@ -200,7 +222,16 @@ function App() {
 
   const handleLogout = () => {
     authLogout();
+    clearWorkspaceLocal();
     setUserEmail(null);
+    setStocks([]);
+    setWatchlist([]);
+    setWealthData([]);
+    setInvestmentPlans(defaultInvestmentPlans());
+    const emptyCash = normalizeCashData({});
+    setCashAccounts(emptyCash.accounts);
+    setCashBalance(0);
+    setCashTransactions([]);
   };
 
   // Calculate total monthly contribution from individual stocks
@@ -410,7 +441,6 @@ function App() {
 
       const updatedStocks = [...stocks, stockWithData];
       setStocks(updatedStocks);
-      savePortfolio(updatedStocks);
     } catch (err) {
       console.error('Failed to add stock:', err);
       setError(`Failed to add ${newStock.symbol}. Please check the symbol and try again.`);
@@ -421,12 +451,10 @@ function App() {
   const handleRemoveStock = (symbol) => {
     const updatedStocks = stocks.filter(s => s.symbol !== symbol);
     setStocks(updatedStocks);
-    savePortfolio(updatedStocks);
   };
 
   const handleSaveSettings = (newSettings) => {
     setSettings(newSettings);
-    saveSettings(newSettings);
   };
 
   const handleViewChart = (stock) => {
@@ -463,7 +491,6 @@ function App() {
       });
       
       setStocks(stocksWithForecast);
-      savePortfolio(stocksWithForecast);
     } catch (err) {
       console.error('Failed to load demo:', err);
       setError('Failed to load demo data');
@@ -482,7 +509,6 @@ function App() {
         : s
     );
     setStocks(updatedStocks);
-    savePortfolio(updatedStocks);
     setEditingStock(null);
   };
 
@@ -491,7 +517,6 @@ function App() {
     setCashAccounts(normalized.accounts);
     setCashBalance(normalized.balance);
     setCashTransactions(normalized.transactions);
-    saveCashData(normalized);
     return normalized;
   };
 
@@ -613,7 +638,6 @@ function App() {
     });
     
     setStocks(updatedStocks);
-    savePortfolio(updatedStocks);
     
     // Update selected stock if viewing it
     if (selectedStock?.symbol === symbol) {
@@ -661,7 +685,6 @@ function App() {
     });
     
     setStocks(updatedStocks);
-    savePortfolio(updatedStocks);
     
     // Update selected stock if viewing it
     if (selectedStock?.symbol === symbol) {
@@ -684,7 +707,6 @@ function App() {
       
       const updatedWatchlist = [...watchlist, newWatchlistItem];
       setWatchlist(updatedWatchlist);
-      saveWatchlist(updatedWatchlist);
     } catch (err) {
       console.error('Error adding to watchlist:', err);
     }
@@ -693,7 +715,6 @@ function App() {
   const handleRemoveFromWatchlist = (symbol) => {
     const updatedWatchlist = watchlist.filter(w => w.symbol !== symbol);
     setWatchlist(updatedWatchlist);
-    saveWatchlist(updatedWatchlist);
   };
 
   const handleAddFromWatchlist = (stock) => {
@@ -976,6 +997,8 @@ function App() {
           <WealthProjector
             cashBalance={cashBalance}
             onAllocateCash={(amount, note) => handleWithdrawCash(amount, note)}
+            plans={investmentPlans}
+            onPlansChange={setInvestmentPlans}
           />
         )}
 

@@ -33,7 +33,7 @@ class User(Base):
 
 
 class UserWorkspace(Base):
-    """Portfolio, settings, watchlist, and cash for one user (JSON blobs)."""
+    """Portfolio, settings, watchlist, cash, and investment plans (JSON blobs)."""
 
     __tablename__ = "user_workspaces"
 
@@ -45,6 +45,7 @@ class UserWorkspace(Base):
     settings: Mapped[Any] = mapped_column(JSON, nullable=False, default=dict)
     watchlist: Mapped[Any] = mapped_column(JSON, nullable=False, default=list)
     cash: Mapped[Any] = mapped_column(JSON, nullable=False, default=dict)
+    plans: Mapped[Any] = mapped_column(JSON, nullable=False, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
     )

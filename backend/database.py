@@ -55,8 +55,31 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
+def _ensure_workspace_plans_column() -> None:
+    """Add plans JSON column on existing DBs (create_all won't alter tables)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "user_workspaces" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("user_workspaces")}
+    if "plans" in cols:
+        return
+    with engine.begin() as conn:
+        if engine.dialect.name == "postgresql":
+            conn.execute(
+                text(
+                    "ALTER TABLE user_workspaces "
+                    "ADD COLUMN plans JSON NOT NULL DEFAULT '{}'::json"
+                )
+            )
+        else:
+            conn.execute(text("ALTER TABLE user_workspaces ADD COLUMN plans JSON"))
+
+
 def init_db() -> None:
     # Import models so metadata is registered
     from backend import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_workspace_plans_column()

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import {
   Calculator,
   Globe2,
-  Landmark,
   Loader2,
   Plus,
   Search,
@@ -18,10 +17,7 @@ import {
   projectWealth,
   searchStocks,
 } from '../services/stockApi';
-import {
-  loadInvestmentPlans,
-  saveInvestmentPlans,
-} from '../services/storage';
+import { defaultInvestmentPlans } from '../services/storage';
 
 function formatMoney(n) {
   if (n == null || Number.isNaN(n)) return '—';
@@ -61,50 +57,86 @@ function riskDots(level) {
   );
 }
 
+function incomeLabel(row) {
+  const type = row.incomeType;
+  const yld = row.expectedYieldPercent;
+  if (type === 'interest') return `${yld ?? 0}% · interest`;
+  if (type === 'accumulating') return 'Accumulating · no cash dividend';
+  if (type === 'none' || !(yld > 0)) return 'No cash yield';
+  return `${yld}% · dividend`;
+}
+
 function HoldingList({ rows }) {
   if (!rows?.length) return null;
   return (
-    <div className="divide-y divide-slate-light/10 rounded-xl border border-slate-light/20 overflow-hidden">
-      {rows.map((row) => (
-        <div
-          key={`${row.kind}-${row.symbol}-${row.role || row.percent}`}
-          className="flex items-start justify-between gap-3 px-3 py-2.5 bg-slate-dark/40"
-        >
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-pearl text-sm">{row.symbol}</span>
-              <span className="text-[10px] text-steel uppercase tracking-wide">
-                {row.kind === 'savings' || row.kind === 'overnight' ? 'Overnight' : row.kind}
-              </span>
-              <span className="text-[10px] font-mono text-silver">{row.percent}%</span>
+    <div className="rounded-xl border border-slate-light/20 overflow-hidden">
+      <div className="hidden sm:grid grid-cols-12 gap-2 px-3 py-2 text-[10px] uppercase tracking-wide text-steel bg-slate-dark/60 border-b border-slate-light/10">
+        <div className="col-span-4">Buy</div>
+        <div className="col-span-2 text-right">Amount</div>
+        <div className="col-span-1 text-right">Mix</div>
+        <div className="col-span-3 text-right">Est. income</div>
+        <div className="col-span-2 text-right">Brokers</div>
+      </div>
+      <div className="divide-y divide-slate-light/10">
+        {rows.map((row) => (
+          <div
+            key={`${row.kind}-${row.symbol}-${row.role || row.percent}`}
+            className="grid grid-cols-1 sm:grid-cols-12 gap-1 sm:gap-2 px-3 py-2.5 bg-slate-dark/40"
+          >
+            <div className="sm:col-span-4 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-pearl text-sm">{row.symbol}</span>
+                <span className="text-[10px] text-steel uppercase tracking-wide">
+                  {row.kind === 'savings' || row.kind === 'overnight'
+                    ? 'Overnight'
+                    : row.kind}
+                </span>
+              </div>
+              <p className="text-[11px] text-steel truncate">{row.name}</p>
+              {row.role && (
+                <p className="text-[10px] text-silver truncate">{row.role}</p>
+              )}
             </div>
-            <p className="text-[11px] text-steel truncate">{row.name}</p>
-            {row.access?.brokers?.length > 0 && (
-              <p className="text-[10px] text-silver mt-0.5">
-                <Landmark className="w-3 h-3 inline mr-0.5" />
-                {row.access.brokers.map((b) => b.name).join(', ')}
+            <div className="sm:col-span-2 sm:text-right">
+              <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
+              {row.price > 0 && (
+                <p className="text-[10px] text-steel">
+                  ${Number(row.price).toFixed(2)}
+                  {row.shares != null ? ` · ~${Number(row.shares).toFixed(2)} sh` : ''}
+                </p>
+              )}
+            </div>
+            <div className="sm:col-span-1 sm:text-right font-mono text-sm text-silver">
+              {row.percent}%
+            </div>
+            <div className="sm:col-span-3 sm:text-right">
+              <p className="font-mono text-sm text-emerald-bright">
+                {formatMoney(row.expectedAnnualIncome || 0)}
               </p>
-            )}
+              <p className="text-[10px] text-steel">{incomeLabel(row)}</p>
+            </div>
+            <div className="sm:col-span-2 sm:text-right text-[10px] text-silver">
+              {row.access?.brokers?.length > 0
+                ? row.access.brokers.map((b) => b.name).join(', ')
+                : '—'}
+            </div>
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="font-mono text-pearl text-sm">{formatMoney(row.amount)}</p>
-            {row.expectedAnnualIncome != null && (
-              <p className="text-[10px] text-emerald-bright font-mono">
-                ~{formatMoney(row.expectedAnnualIncome)}/yr
-              </p>
-            )}
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
 
-export default function WealthProjector({ cashBalance = 0, onAllocateCash }) {
+export default function WealthProjector({
+  cashBalance = 0,
+  onAllocateCash,
+  plans: plansProp,
+  onPlansChange,
+}) {
   const [tab, setTab] = useState('suggested'); // suggested | custom | dashboard
   const [profiles, setProfiles] = useState([]);
   const [countries, setCountries] = useState([]);
-  const [plans, setPlans] = useState(() => loadInvestmentPlans());
+  const plans = plansProp || defaultInvestmentPlans();
   const [cashInput, setCashInput] = useState(String(cashBalance || 10000));
   const [suggestedResult, setSuggestedResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -138,10 +170,6 @@ export default function WealthProjector({ cashBalance = 0, onAllocateCash }) {
     };
   }, []);
 
-  useEffect(() => {
-    saveInvestmentPlans(plans);
-  }, [plans]);
-
   const cash = Number(String(cashInput).replace(/,/g, '')) || 0;
   const monthly = Number(plans.monthlyContribution) || 0;
   const country = countries.find((c) => c.code === plans.countryCode);
@@ -154,7 +182,13 @@ export default function WealthProjector({ cashBalance = 0, onAllocateCash }) {
 
   const customTotal = pctTotal(plans.customSleeves || []);
 
-  const patchPlans = (patch) => setPlans((prev) => ({ ...prev, ...patch }));
+  const patchPlans = (patch) => {
+    if (typeof onPlansChange !== 'function') return;
+    onPlansChange((prev) => ({
+      ...(prev || defaultInvestmentPlans()),
+      ...patch,
+    }));
+  };
 
   const updateSleeve = (id, patch) => {
     patchPlans({

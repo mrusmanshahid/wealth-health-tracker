@@ -60,7 +60,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
             portfolio=[],
             settings={"currency": "USD", "forecastYears": 5},
             watchlist=[],
-            cash={"balance": 0, "transactions": []},
+            cash={"balance": 0, "accounts": [], "transactions": []},
+            plans={},
         )
     )
     db.commit()

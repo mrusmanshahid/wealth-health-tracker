@@ -643,6 +643,125 @@ def overnight_product(country_code: str) -> dict[str, str]:
     }
 
 
+def _clean_access(access: dict[str, Any] | None) -> dict[str, Any]:
+    """Drop alternate-for framing from access payloads."""
+    a = dict(access or {})
+    a.pop("alternative", None)
+    note = (a.get("note") or "").strip()
+    lowered = note.lower()
+    if any(
+        token in lowered
+        for token in (
+            "alternate",
+            "alternative",
+            "instead of",
+            "use ucits",
+            "priips",
+            "us-domiciled",
+            "us hysa",
+        )
+    ):
+        a.pop("note", None)
+    return a
+
+
+def resolve_local_instrument(symbol: str, country_code: str) -> dict[str, Any]:
+    """
+    Country-first instrument: if a local listing exists, return that as primary.
+    Never exposes alternate-for US/global framing.
+    """
+    import re
+
+    code = (country_code or "US").upper()
+    if code not in COUNTRIES:
+        code = "US"
+
+    if symbol == "HYSA":
+        overnight = overnight_product(code)
+        country = COUNTRIES[code]
+        brokers = [
+            {"id": b["id"], "name": b["name"], "type": b["type"]}
+            for b in country.get("brokers") or []
+        ]
+        # Prefer brokers listed on HYSA access if present
+        hysa_access = resolve_access("HYSA", code)
+        if hysa_access.get("brokers"):
+            brokers = hysa_access["brokers"]
+        return {
+            "symbol": overnight["symbol"],
+            "name": overnight["name"],
+            "kindHint": "savings",
+            "access": _clean_access(
+                {
+                    "country": code,
+                    "status": "available",
+                    "available": True,
+                    "brokers": brokers,
+                    "localListing": overnight["symbol"] != "HYSA",
+                    "note": None,
+                }
+            ),
+        }
+
+    access = resolve_access(symbol, code)
+    alt = access.get("alternative") or {}
+    alt_symbol = alt.get("symbol")
+    ticker_re = re.compile(r"^[A-Z0-9]{1,6}(\.[A-Z]{1,3})?$", re.I)
+
+    if alt_symbol and ticker_re.fullmatch(alt_symbol.strip()):
+        local_access = resolve_access(alt_symbol, code)
+        # If the UCITS itself isn't mapped, treat as available via same country brokers
+        if not (SYMBOL_ACCESS.get(alt_symbol) or {}).get(code):
+            country = COUNTRIES[code]
+            local_access = {
+                "country": code,
+                "status": "available",
+                "available": True,
+                "brokers": [
+                    {"id": b["id"], "name": b["name"], "type": b["type"]}
+                    for b in country.get("brokers") or []
+                ][:4],
+                "note": None,
+            }
+        cleaned = _clean_access(local_access)
+        cleaned["status"] = "available"
+        cleaned["available"] = True
+        cleaned["localListing"] = True
+        cleaned.pop("note", None)
+        return {
+            "symbol": alt_symbol.strip(),
+            "name": alt.get("name") or alt_symbol,
+            "kindHint": None,
+            "access": cleaned,
+        }
+
+    if alt_symbol and not ticker_re.fullmatch((alt_symbol or "").strip()):
+        # Non-ticker local cash-style product
+        return {
+            "symbol": alt_symbol,
+            "name": alt.get("name") or alt_symbol,
+            "kindHint": "savings",
+            "access": _clean_access(
+                {
+                    "country": code,
+                    "status": "available",
+                    "available": True,
+                    "brokers": access.get("brokers") or [],
+                    "localListing": True,
+                    "note": None,
+                }
+            ),
+        }
+
+    cleaned = _clean_access(access)
+    return {
+        "symbol": symbol,
+        "name": None,
+        "kindHint": None,
+        "access": cleaned,
+    }
+
+
 def list_countries() -> list[dict[str, Any]]:
     return [
         {
