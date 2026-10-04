@@ -14,6 +14,7 @@ import EmptyState from './components/EmptyState';
 import Watchlist from './components/Watchlist';
 import StockDiscovery from './components/StockDiscovery';
 import InvestableCash from './components/InvestableCash';
+import WealthProjector from './components/WealthProjector';
 
 import { fetchStockHistory, fetchStockQuote, fetchUndervaluedStocks, fetchSingleStockNews } from './services/stockApi';
 import { savePortfolio, loadPortfolio, saveSettings, loadSettings, saveWatchlist, loadWatchlist, saveCashData, loadCashData } from './services/storage';
@@ -767,18 +768,20 @@ function App() {
               </div>
             </div>
 
-            {/* Stock Discovery - Full Width */}
-            <StockDiscovery
-              portfolioSymbols={stocks.map(s => s.symbol)}
-              watchlistSymbols={watchlist.map(w => w.symbol)}
-              onAddToWatchlist={handleAddToWatchlist}
-              onAddToPortfolio={handleAddFromDiscovery}
-            />
-
             {/* News Section */}
             <NewsSection symbols={stocks.map(s => s.symbol)} />
           </>
         )}
+
+        {/* Always available planning tools */}
+        <WealthProjector />
+
+        <StockDiscovery
+          portfolioSymbols={stocks.map(s => s.symbol)}
+          watchlistSymbols={watchlist.map(w => w.symbol)}
+          onAddToWatchlist={handleAddToWatchlist}
+          onAddToPortfolio={handleAddFromDiscovery}
+        />
 
         {/* Modals */}
         <AddStockModal

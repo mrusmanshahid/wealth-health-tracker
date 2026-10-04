@@ -1,0 +1,13 @@
+# Free Render deploy: https://render.com
+# Dashboard → New → Blueprint → connect this repo
+services:
+  - type: web
+    name: whealth
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: CORS_ORIGINS
+        value: "*"

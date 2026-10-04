@@ -16,7 +16,8 @@ import {
   Rocket,
   FileText,
   Zap,
-  Crown
+  Crown,
+  BarChart3,
 } from 'lucide-react';
 import { 
   fetchTrendingStocks, 
@@ -24,7 +25,8 @@ import {
   fetchStockRecommendations,
   fetchSectorStocks,
   fetchUndervaluedStocks,
-  fetchGrowthStocks
+  fetchGrowthStocks,
+  fetchHighPerformingEtfs,
 } from '../services/stockApi';
 import QuickStockView from './QuickStockView';
 
@@ -164,6 +166,21 @@ function StockCarousel({ title, icon: Icon, stocks, color, onWatch, onBuy, onVie
                 </div>
               )}
 
+              {(stock.return5Y != null || stock.return10Y != null) && (
+                <div className="mb-2 flex flex-wrap gap-1">
+                  {stock.return5Y != null && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-bright">
+                      5Y {stock.return5Y > 0 ? '+' : ''}{stock.return5Y}%
+                    </span>
+                  )}
+                  {stock.return10Y != null && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-sapphire/15 text-sapphire-bright">
+                      10Y {stock.return10Y > 0 ? '+' : ''}{stock.return10Y}%
+                    </span>
+                  )}
+                </div>
+              )}
+
               {/* Quick Actions */}
               <div className="flex gap-1.5 mt-auto">
                 <button
@@ -291,6 +308,7 @@ export default function StockDiscovery({
   const [sectorStocks, setSectorStocks] = useState([]);
   const [undervaluedStocks, setUndervaluedStocks] = useState([]);
   const [growthStocks, setGrowthStocks] = useState([]);
+  const [highPerformingEtfs, setHighPerformingEtfs] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -312,12 +330,13 @@ export default function StockDiscovery({
   const loadDiscoveryData = async () => {
     setIsLoading(true);
     try {
-      const [trending, movers, sectors, undervalued, growth] = await Promise.all([
+      const [trending, movers, sectors, undervalued, growth, etfs] = await Promise.all([
         fetchTrendingStocks(),
         fetchMarketMovers(),
         fetchSectorStocks(),
         fetchUndervaluedStocks(),
         fetchGrowthStocks(),
+        fetchHighPerformingEtfs(),
       ]);
       
       setTrendingStocks(trending || []);
@@ -325,6 +344,7 @@ export default function StockDiscovery({
       setSectorStocks(sectors || []);
       setUndervaluedStocks(undervalued || []);
       setGrowthStocks(growth || []);
+      setHighPerformingEtfs(etfs || []);
       setLastRefresh(new Date());
     } catch (err) {
       console.error('Error loading discovery data:', err);
@@ -485,6 +505,18 @@ export default function StockDiscovery({
           </div>
 
           {/* Carousels */}
+          <StockCarousel
+            title="High-Performing ETFs"
+            icon={BarChart3}
+            stocks={highPerformingEtfs}
+            color="emerald"
+            onWatch={handleWatch}
+            onBuy={handleBuy}
+            onViewDetails={handleViewDetails}
+            isInPortfolio={isInPortfolio}
+            isInWatchlist={isInWatchlist}
+          />
+
           <StockCarousel
             title="Discounted Stocks"
             icon={BadgePercent}
